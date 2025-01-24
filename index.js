@@ -3,6 +3,31 @@ const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const { token } = require('./config.json');
 const fs = require('fs');
 const path = require('path');
+const express = require('express');
+
+// Create Express app for keep-alive
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Health check route
+app.get('/', (req, res) => {
+    res.send('Bot is running');
+});
+
+// Start the Express server
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
+
+// Keep-alive function to ping the server periodically
+function keepAlive() {
+    setInterval(() => {
+        const url = `https://${process.env.RENDER_SERVICE_NAME}.onrender.com`;
+        require('node-fetch')(url)
+            .then(() => console.log('Keep-alive ping sent'))
+            .catch(console.error);
+    }, 5 * 60 * 1000); // Ping every 5 minutes
+}
 
 const client = new Client({ 
     intents: [
@@ -66,6 +91,9 @@ for (const file of eventFiles) {
 client.once('ready', () => {
     loadCustomResponses();
     console.log(`Ready! Logged in as ${client.user.tag}`);
+    
+    // Start keep-alive mechanism
+    keepAlive();
 });
 
 // メッセージ作成イベントのハンドラ
