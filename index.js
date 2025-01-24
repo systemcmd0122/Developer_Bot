@@ -1,6 +1,6 @@
 // index.js
+require('dotenv').config();
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
-const { token } = require('./config.json');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
@@ -120,7 +120,7 @@ client.on('messageCreate', async message => {
 // 新規メンバー参加時のイベントハンドラ
 client.on('guildMemberAdd', async member => {
     try {
-        const roleId = '1331169578155507772';
+        const roleId = process.env.NEW_MEMBER_ROLE_ID;
         await member.roles.add(roleId);
         console.log(`Added role ${roleId} to new member ${member.user.tag}`);
     } catch (error) {
@@ -128,4 +128,4 @@ client.on('guildMemberAdd', async member => {
     }
 });
 
-client.login(token);
+client.login(process.env.DISCORD_TOKEN);
