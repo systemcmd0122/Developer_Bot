@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, Collection, GatewayIntentBits } = require('discord.js');
+const { Client, Collection, GatewayIntentBits, Events, REST, Routes } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
@@ -94,6 +94,7 @@ app.get('/health', (req, res) => {
 async function loadCommands() {
     const commandsPath = path.join(__dirname, 'commands');
     const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+    const commands = [];
     
     let frameIndex = 0;
     for (const file of commandFiles) {
@@ -104,6 +105,7 @@ async function loadCommands() {
         const command = require(filePath);
         if ('data' in command && 'execute' in command) {
             client.commands.set(command.data.name, command);
+            commands.push(command.data.toJSON());
         }
         
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -111,6 +113,7 @@ async function loadCommands() {
     }
     
     console.log(chalk.green(`\n✓ Loaded ${client.commands.size} commands`));
+    return commands;
 }
 
 function loadEvents() {
@@ -129,6 +132,57 @@ function loadEvents() {
     }
 }
 
+async function registerCommands(commands) {
+    try {
+        const rest = new REST().setToken(process.env.DISCORD_TOKEN);
+        console.log(chalk.yellow('Started refreshing application (/) commands.'));
+
+        await rest.put(
+            Routes.applicationCommands(process.env.CLIENT_ID),
+            { body: commands },
+        );
+
+        console.log(chalk.green('Successfully reloaded application (/) commands.'));
+    } catch (error) {
+        console.error(chalk.red('Error while registering commands:'), error);
+    }
+}
+
+// Interaction handling
+client.on(Events.InteractionCreate, async interaction => {
+    try {
+        // Handle slash commands
+        if (interaction.isChatInputCommand()) {
+            const command = client.commands.get(interaction.commandName);
+            if (!command) {
+                console.error(chalk.red(`No command matching ${interaction.commandName} was found.`));
+                return;
+            }
+
+            try {
+                await command.execute(interaction);
+            } catch (error) {
+                console.error(chalk.red('Error executing command:'), error);
+                const errorMessage = 'コマンドの実行中にエラーが発生しました。';
+                if (interaction.replied || interaction.deferred) {
+                    await interaction.followUp({ content: errorMessage, ephemeral: true });
+                } else {
+                    await interaction.reply({ content: errorMessage, ephemeral: true });
+                }
+            }
+        }
+        // Handle select menus for role management
+        else if (interaction.isStringSelectMenu() && interaction.customId.startsWith('role-board-')) {
+            const roleManageCommand = client.commands.get('rolemanage');
+            if (roleManageCommand && roleManageCommand.handleRoleInteraction) {
+                await roleManageCommand.handleRoleInteraction(interaction);
+            }
+        }
+    } catch (error) {
+        console.error(chalk.red('Error handling interaction:'), error);
+    }
+});
+
 async function animateStartup() {
     console.clear();
     
@@ -146,14 +200,6 @@ async function animateStartup() {
     console.log(chalk.cyan('\n═══════════════════════'));
     console.log(chalk.yellow('  Starting Services...'));
     console.log(chalk.cyan('═══════════════════════\n'));
-
-    await loadCommands();
-
-    console.log(chalk.green('\n\n✓ All commands loaded successfully'));
-    console.log(chalk.cyan('\n═══════════════════════'));
-    console.log(chalk.green(`✓ Version: ${chalk.white(BOT_VERSION)}`));
-    console.log(chalk.green(`✓ Node.js: ${chalk.white(process.version)}`));
-    console.log(chalk.cyan('═══════════════════════\n'));
 }
 
 // Global error handling
@@ -166,7 +212,14 @@ process.on('uncaughtException', (error) => {
 });
 
 // Start the application
-animateStartup().then(() => {
+(async () => {
+    await animateStartup();
+    
+    // Load and register commands
+    const commands = await loadCommands();
+    await registerCommands(commands);
+    
+    // Load events
     loadEvents();
 
     // Start Express server
@@ -175,15 +228,15 @@ animateStartup().then(() => {
     });
 
     console.log(chalk.yellow('🔌 Connecting to Discord...'));
-    client.login(process.env.DISCORD_TOKEN)
-        .then(() => {
-            console.log(chalk.green('✓ Bot is ready!'));
-        })
-        .catch(error => {
-            console.error(chalk.red('✗ Failed to connect:'), error);
-            process.exit(1);
-        });
-});
+    
+    try {
+        await client.login(process.env.DISCORD_TOKEN);
+        console.log(chalk.green('✓ Bot is ready!'));
+    } catch (error) {
+        console.error(chalk.red('✗ Failed to connect:'), error);
+        process.exit(1);
+    }
+})();
 
 // Graceful shutdown
 process.on('SIGINT', () => {
