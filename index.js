@@ -3,11 +3,17 @@ const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
+const express = require('express');
+const os = require('os');
 
 const BOT_VERSION = '1.1.0';
+const PORT = process.env.PORT || 8000;
 const FRAMES = [
     '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'
 ];
+
+// Express app setup
+const app = express();
 
 const client = new Client({ 
     intents: [
@@ -24,8 +30,130 @@ client.commands = new Collection();
 client.friendCodes = {};      // Friend codes storage
 client.roleBoards = {};       // Role boards storage
 client.userPreferences = {};  // Optional: for future expandability
+client.startTime = Date.now(); // Bot start time for uptime calculation
+
+// メトリクス収集関数
+function getMetrics() {
+    const usage = process.memoryUsage();
+    const cpuUsage = os.loadavg()[0]; // 1分間の平均CPU使用率
+    const uptime = Math.floor((Date.now() - client.startTime) / 1000); // 秒単位でのアップタイム
+
+    return {
+        memory: {
+            heapUsed: Math.round(usage.heapUsed / 1024 / 1024 * 100) / 100, // MB
+            heapTotal: Math.round(usage.heapTotal / 1024 / 1024 * 100) / 100, // MB
+            rss: Math.round(usage.rss / 1024 / 1024 * 100) / 100 // MB
+        },
+        cpu: Math.round(cpuUsage * 100) / 100,
+        uptime: {
+            seconds: uptime % 60,
+            minutes: Math.floor(uptime / 60) % 60,
+            hours: Math.floor(uptime / 3600) % 24,
+            days: Math.floor(uptime / 86400)
+        },
+        bot: {
+            version: BOT_VERSION,
+            guilds: client.guilds.cache.size,
+            users: client.users.cache.size,
+            commands: client.commands.size
+        }
+    };
+}
+
+// Express routes
+app.get('/', (req, res) => {
+    const metrics = getMetrics();
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Discord Bot Status</title>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    margin: 20px;
+                    background-color: #2c2f33;
+                    color: #ffffff;
+                }
+                .container {
+                    max-width: 800px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    background-color: #23272a;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                }
+                .metric-group {
+                    margin-bottom: 20px;
+                    padding: 15px;
+                    background-color: #2c2f33;
+                    border-radius: 4px;
+                }
+                .metric {
+                    margin: 10px 0;
+                }
+                h1 {
+                    color: #7289da;
+                    text-align: center;
+                }
+                h2 {
+                    color: #7289da;
+                    margin-bottom: 10px;
+                }
+                .status {
+                    text-align: center;
+                    padding: 10px;
+                    background-color: #43b581;
+                    border-radius: 4px;
+                    margin-bottom: 20px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Discord Bot Status</h1>
+                <div class="status">🟢 Bot is running</div>
+                
+                <div class="metric-group">
+                    <h2>System Metrics</h2>
+                    <div class="metric">CPU Load: ${metrics.cpu}%</div>
+                    <div class="metric">Memory (RSS): ${metrics.memory.rss} MB</div>
+                    <div class="metric">Heap Used: ${metrics.memory.heapUsed} MB</div>
+                    <div class="metric">Heap Total: ${metrics.memory.heapTotal} MB</div>
+                </div>
+
+                <div class="metric-group">
+                    <h2>Bot Info</h2>
+                    <div class="metric">Version: ${metrics.bot.version}</div>
+                    <div class="metric">Guilds: ${metrics.bot.guilds}</div>
+                    <div class="metric">Users: ${metrics.bot.users}</div>
+                    <div class="metric">Commands: ${metrics.bot.commands}</div>
+                </div>
+
+                <div class="metric-group">
+                    <h2>Uptime</h2>
+                    <div class="metric">
+                        ${metrics.uptime.days}d ${metrics.uptime.hours}h ${metrics.uptime.minutes}m ${metrics.uptime.seconds}s
+                    </div>
+                </div>
+            </div>
+            <script>
+                setTimeout(() => location.reload(), 30000); // 30秒ごとに自動更新
+            </script>
+        </body>
+        </html>
+    `);
+});
+
+// Health check endpoint for Koyeb
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok' });
+});
 
 async function loadCommands() {
+    // 既存のコードはそのまま
     const commandsPath = path.join(__dirname, 'commands');
     const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
     
@@ -47,7 +175,9 @@ async function loadCommands() {
     console.log(chalk.green(`\n✓ Loaded ${client.commands.size} commands`));
 }
 
+// 残りの既存の関数はそのまま
 function loadEvents() {
+    // 既存のコード
     const eventsPath = path.join(__dirname, 'events');
     const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
 
@@ -62,22 +192,18 @@ function loadEvents() {
         }
     }
 
-    // シンプル化された相互作用ハンドラー
     client.on('interactionCreate', async (interaction) => {
         try {
-            // スラッシュコマンド処理
             if (interaction.isChatInputCommand()) {
                 const command = interaction.client.commands.get(interaction.commandName);
                 
                 if (!command) return;
 
-                // すでに応答済みの場合は何もしない
                 if (interaction.replied || interaction.deferred) return;
 
                 await command.execute(interaction);
             }
             
-            // ロールボード相互作用処理
             const roleManageCommand = interaction.client.commands.get('rolemanage');
             if (roleManageCommand && roleManageCommand.handleRoleInteraction && interaction.isStringSelectMenu()) {
                 await roleManageCommand.handleRoleInteraction(interaction);
@@ -86,7 +212,6 @@ function loadEvents() {
             console.error(chalk.red('Interaction Error:'), error);
             
             try {
-                // エラー応答を最小限に抑える
                 if (!interaction.replied && !interaction.deferred) {
                     await interaction.reply({
                         content: 'エラーが発生しました。',
@@ -101,6 +226,7 @@ function loadEvents() {
 }
 
 async function animateStartup() {
+    // 既存のコード
     console.clear();
     
     const logo = [
@@ -136,9 +262,14 @@ process.on('uncaughtException', (error) => {
     console.error(chalk.red('Uncaught Exception:'), error);
 });
 
-// Startup sequence
+// Modified startup sequence to include Express server
 animateStartup().then(() => {
     loadEvents();
+
+    // Start Express server
+    app.listen(PORT, () => {
+        console.log(chalk.green(`✓ Metrics server running on port ${PORT}`));
+    });
 
     console.log(chalk.yellow('🔌 Connecting to Discord...'));
     client.login(process.env.DISCORD_TOKEN)
@@ -151,7 +282,7 @@ animateStartup().then(() => {
         });
 });
 
-// Optional: Graceful shutdown
+// Graceful shutdown
 process.on('SIGINT', () => {
     console.log(chalk.yellow('\nGracefully shutting down...'));
     client.destroy();
