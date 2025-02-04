@@ -19,7 +19,6 @@ module.exports = {
                 { name: 'プラットフォーム', value: os.platform(), inline: true },
                 { name: 'アーキテクチャ', value: os.arch(), inline: true },
                 { name: 'CPU', value: os.cpus()[0].model, inline: false },
-                { name: 'CPU コア数', value: os.cpus().length.toString(), inline: true },
                 { name: '稼働時間', value: `${Math.floor(os.uptime() / 3600)}時間`, inline: true },
                 { name: 'メモリ使用量', value: `${usedMemory}GB / ${totalMemory}GB`, inline: false },
                 { name: 'Node.jsバージョン', value: process.version, inline: true }

@@ -1,131 +1,159 @@
-// index.js
 require('dotenv').config();
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const express = require('express');
+const chalk = require('chalk');
 
-// Create Express app for keep-alive
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Health check route
-app.get('/', (req, res) => {
-    res.send('Bot is running');
-});
-
-// Start the Express server
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
-
-// Keep-alive function to ping the server periodically
-function keepAlive() {
-    setInterval(() => {
-        const url = `https://${process.env.RENDER_SERVICE_NAME}.onrender.com`;
-        require('node-fetch')(url)
-            .then(() => console.log('Keep-alive ping sent'))
-            .catch(console.error);
-    }, 5 * 60 * 1000); // Ping every 5 minutes
-}
+const BOT_VERSION = '1.1.0';
+const FRAMES = [
+    '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'
+];
 
 const client = new Client({ 
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildPresences
     ] 
 });
 
+// Global data stores
 client.commands = new Collection();
-client.customResponses = new Collection();
+client.friendCodes = {};      // Friend codes storage
+client.roleBoards = {};       // Role boards storage
+client.userPreferences = {};  // Optional: for future expandability
 
-// カスタムレスポンスの読み込み
-function loadCustomResponses() {
-    const responsesPath = path.join(__dirname, 'custom-responses.json');
-    if (fs.existsSync(responsesPath)) {
-        const responses = JSON.parse(fs.readFileSync(responsesPath, 'utf8'));
-        client.customResponses.clear();
-        for (const [trigger, response] of Object.entries(responses)) {
-            client.customResponses.set(trigger.toLowerCase(), response);
-        }
-        console.log(`${client.customResponses.size}個のカスタムレスポンスを読み込みました`);
-    }
-}
-
-// カスタムレスポンスの保存
-function saveCustomResponses() {
-    const responsesPath = path.join(__dirname, 'custom-responses.json');
-    const responses = Object.fromEntries(client.customResponses);
-    fs.writeFileSync(responsesPath, JSON.stringify(responses, null, 2));
-}
-
-// コマンドファイルの読み込み
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-
-for (const file of commandFiles) {
-    const filePath = path.join(commandsPath, file);
-    const command = require(filePath);
-    if ('data' in command && 'execute' in command) {
-        client.commands.set(command.data.name, command);
-    }
-}
-
-// イベントファイルの読み込み
-const eventsPath = path.join(__dirname, 'events');
-const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
-
-for (const file of eventFiles) {
-    const filePath = path.join(eventsPath, file);
-    const event = require(filePath);
-    if (event.once) {
-        client.once(event.name, (...args) => event.execute(...args));
-    } else {
-        client.on(event.name, (...args) => event.execute(...args));
-    }
-}
-
-// 起動時にカスタムレスポンスを読み込む
-client.once('ready', () => {
-    loadCustomResponses();
-    console.log(`Ready! Logged in as ${client.user.tag}`);
+async function loadCommands() {
+    const commandsPath = path.join(__dirname, 'commands');
+    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
     
-    // Start keep-alive mechanism
-    keepAlive();
-});
-
-// メッセージ作成イベントのハンドラ
-client.on('messageCreate', async message => {
-    if (message.author.bot) return;
-
-    // m!pからのURLメッセージの自動削除
-    if (message.content.startsWith('m!p') && message.content.includes('http')) {
-        setTimeout(() => {
-            message.delete().catch(console.error);
-        }, 2500);
+    let frameIndex = 0;
+    for (const file of commandFiles) {
+        const frame = FRAMES[frameIndex % FRAMES.length];
+        process.stdout.write(`\r${chalk.blue(frame)} Loading command: ${chalk.white(file)}`);
+        
+        const filePath = path.join(commandsPath, file);
+        const command = require(filePath);
+        if ('data' in command && 'execute' in command) {
+            client.commands.set(command.data.name, command);
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 200));
+        frameIndex++;
     }
+    
+    console.log(chalk.green(`\n✓ Loaded ${client.commands.size} commands`));
+}
 
-    // カスタムレスポンスのチェック
-    const messageContent = message.content.toLowerCase();
-    for (const [trigger, response] of client.customResponses) {
-        if (messageContent.includes(trigger)) {
-            await message.reply(response);
-            break;
+function loadEvents() {
+    const eventsPath = path.join(__dirname, 'events');
+    const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
+
+    for (const file of eventFiles) {
+        const filePath = path.join(eventsPath, file);
+        const event = require(filePath);
+
+        if (event.once) {
+            client.once(event.name, (...args) => event.execute(...args));
+        } else {
+            client.on(event.name, (...args) => event.execute(...args));
         }
     }
-});
 
-// 新規メンバー参加時のイベントハンドラ
-client.on('guildMemberAdd', async member => {
-    try {
-        const roleId = process.env.NEW_MEMBER_ROLE_ID;
-        await member.roles.add(roleId);
-        console.log(`Added role ${roleId} to new member ${member.user.tag}`);
-    } catch (error) {
-        console.error('Error adding role to new member:', error);
+    // シンプル化された相互作用ハンドラー
+    client.on('interactionCreate', async (interaction) => {
+        try {
+            // スラッシュコマンド処理
+            if (interaction.isChatInputCommand()) {
+                const command = interaction.client.commands.get(interaction.commandName);
+                
+                if (!command) return;
+
+                // すでに応答済みの場合は何もしない
+                if (interaction.replied || interaction.deferred) return;
+
+                await command.execute(interaction);
+            }
+            
+            // ロールボード相互作用処理
+            const roleManageCommand = interaction.client.commands.get('rolemanage');
+            if (roleManageCommand && roleManageCommand.handleRoleInteraction && interaction.isStringSelectMenu()) {
+                await roleManageCommand.handleRoleInteraction(interaction);
+            }
+        } catch (error) {
+            console.error(chalk.red('Interaction Error:'), error);
+            
+            try {
+                // エラー応答を最小限に抑える
+                if (!interaction.replied && !interaction.deferred) {
+                    await interaction.reply({
+                        content: 'エラーが発生しました。',
+                        ephemeral: true
+                    });
+                }
+            } catch (followupError) {
+                console.error(chalk.red('Follow-up Error:'), followupError);
+            }
+        }
+    });
+}
+
+async function animateStartup() {
+    console.clear();
+    
+    const logo = [
+        '▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄',
+        '█░░░░Discord Bot░░░░█',
+        '▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀'
+    ];
+
+    for (let i = 0; i < logo.length; i++) {
+        console.log(chalk.cyan(logo[i]));
+        await new Promise(resolve => setTimeout(resolve, 100));
     }
+
+    console.log(chalk.cyan('\n═══════════════════════'));
+    console.log(chalk.yellow('  Starting Services...'));
+    console.log(chalk.cyan('═══════════════════════\n'));
+
+    await loadCommands();
+
+    console.log(chalk.green('\n\n✓ All commands loaded successfully'));
+    console.log(chalk.cyan('\n═══════════════════════'));
+    console.log(chalk.green(`✓ Version: ${chalk.white(BOT_VERSION)}`));
+    console.log(chalk.green(`✓ Node.js: ${chalk.white(process.version)}`));
+    console.log(chalk.cyan('═══════════════════════\n'));
+}
+
+// Global error handling
+process.on('unhandledRejection', (reason, promise) => {
+    console.error(chalk.red('Unhandled Rejection at:'), promise, 'reason:', reason);
 });
 
-client.login(process.env.DISCORD_TOKEN);
+process.on('uncaughtException', (error) => {
+    console.error(chalk.red('Uncaught Exception:'), error);
+});
+
+// Startup sequence
+animateStartup().then(() => {
+    loadEvents();
+
+    console.log(chalk.yellow('🔌 Connecting to Discord...'));
+    client.login(process.env.DISCORD_TOKEN)
+        .then(() => {
+            console.log(chalk.green('✓ Bot is ready!'));
+        })
+        .catch(error => {
+            console.error(chalk.red('✗ Failed to connect:'), error);
+            process.exit(1);
+        });
+});
+
+// Optional: Graceful shutdown
+process.on('SIGINT', () => {
+    console.log(chalk.yellow('\nGracefully shutting down...'));
+    client.destroy();
+    process.exit(0);
+});
