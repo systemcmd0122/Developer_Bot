@@ -46,25 +46,21 @@ module.exports = {
         ),
 
     async execute(interaction) {
-        // サーバー内でロールボードを管理するためのオブジェクト
         const serverRoleBoards = interaction.client.roleBoards || {};
         interaction.client.roleBoards = serverRoleBoards;
 
         const subcommand = interaction.options.getSubcommand();
 
-        // ロールボード作成
         if (subcommand === 'create') {
             const name = interaction.options.getString('name');
             const description = interaction.options.getString('description') || 'ロールを選択してください';
             const category = interaction.options.getString('category');
 
-            // サーバーの全ロールを取得（特定の条件に基づいてフィルタリング）
             const roles = interaction.guild.roles.cache
                 .filter(role => 
                     role.name !== '@everyone' && 
                     !role.managed && 
                     role.position < interaction.guild.members.me.roles.highest.position &&
-                    // 管理者権限を持つロールを除外
                     !role.permissions.has('Administrator')
                 )
                 .sort((a, b) => b.position - a.position);
@@ -76,7 +72,6 @@ module.exports = {
                 });
             }
 
-            // カテゴリでフィルタリングするオプションを追加
             const filteredRoles = category 
                 ? roles.filter(role => role.name.toLowerCase().includes(category.toLowerCase()))
                 : roles;
@@ -115,7 +110,6 @@ module.exports = {
                 components: [row]
             });
 
-            // ロールボード情報を保存
             serverRoleBoards[name] = {
                 messageId: roleBoard.id,
                 channelId: interaction.channel.id,
@@ -129,7 +123,6 @@ module.exports = {
             });
         }
 
-        // ロールボード一覧
         if (subcommand === 'list') {
             if (Object.keys(serverRoleBoards).length === 0) {
                 return interaction.reply({
@@ -153,7 +146,6 @@ module.exports = {
             return interaction.reply({ embeds: [embed], ephemeral: true });
         }
 
-        // ロールボード削除
         if (subcommand === 'delete') {
             const name = interaction.options.getString('name');
 
@@ -186,20 +178,16 @@ module.exports = {
     },
 
     async handleRoleInteraction(interaction) {
-        // カスタムIDが role-board- で始まるインタラクションを処理
         if (!interaction.isStringSelectMenu() || !interaction.customId.startsWith('role-board-')) {
             return;
         }
 
-        // すでに応答済みの場合は何もしない
         if (interaction.replied || interaction.deferred) {
             return;
         }
 
         const member = await interaction.guild.members.fetch(interaction.user.id);
         const roleBoards = interaction.client.roleBoards;
-
-        // 対応するロールボードを見つける
         const boardName = interaction.customId.replace('role-board-', '');
         const board = roleBoards[boardName];
 
@@ -210,12 +198,10 @@ module.exports = {
             });
         }
 
-        // 現在のユーザーロールをフィルタリング
         const currentRoles = member.roles.cache
             .filter(role => board.roles.includes(role.id))
             .map(role => role.id);
         
-        // 選択されたロールを追加し、選択解除されたロールを削除
         const rolesToAdd = interaction.values.filter(id => !currentRoles.includes(id));
         const rolesToRemove = currentRoles.filter(id => !interaction.values.includes(id));
 
@@ -234,10 +220,8 @@ module.exports = {
             .setColor('#00ff00')
             .setTimestamp();
 
-        // 応答を更新
         await interaction.deferUpdate();
 
-        // 結果を表示
         await interaction.followUp({
             embeds: [resultEmbed],
             ephemeral: true

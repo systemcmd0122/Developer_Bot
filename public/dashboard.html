@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Discord Bot Status Dashboard</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+</head>
+<body class="bg-gray-900 text-white">
+    <div class="min-h-screen">
+        <nav class="bg-gray-800 shadow-lg">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <span class="text-2xl font-bold text-indigo-500">Bot Dashboard</span>
+                        </div>
+                    </div>
+                    <div id="status-indicator" class="flex items-center">
+                        <span class="flex h-3 w-3 relative">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                        </span>
+                        <span class="ml-2 text-green-400">オンライン</span>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- システム情報 -->
+                <div class="bg-gray-800 overflow-hidden shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <h3 class="text-lg leading-6 font-medium text-indigo-400">システム情報</h3>
+                        <dl class="mt-5 grid grid-cols-1 gap-5">
+                            <div class="space-y-1">
+                                <dt class="text-sm font-medium text-gray-400">CPU使用率</dt>
+                                <dd id="cpu-usage" class="text-2xl font-semibold text-white">0%</dd>
+                                <div class="w-full bg-gray-700 rounded-full h-2.5">
+                                    <div id="cpu-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="space-y-1">
+                                <dt class="text-sm font-medium text-gray-400">メモリ使用率</dt>
+                                <dd id="memory-usage" class="text-2xl font-semibold text-white">0 MB</dd>
+                                <div class="w-full bg-gray-700 rounded-full h-2.5">
+                                    <div id="memory-bar" class="bg-purple-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </dl>
+                    </div>
+                </div>
+
+                <!-- ボット統計 -->
+                <div class="bg-gray-800 overflow-hidden shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <h3 class="text-lg leading-6 font-medium text-indigo-400">ボット統計</h3>
+                        <dl class="mt-5 grid grid-cols-2 gap-5">
+                            <div>
+                                <dt class="text-sm font-medium text-gray-400">サーバー数</dt>
+                                <dd id="guild-count" class="mt-1 text-2xl font-semibold text-white">0</dd>
+                            </div>
+                            <div>
+                                <dt class="text-sm font-medium text-gray-400">ユーザー数</dt>
+                                <dd id="user-count" class="mt-1 text-2xl font-semibold text-white">0</dd>
+                            </div>
+                            <div>
+                                <dt class="text-sm font-medium text-gray-400">コマンド数</dt>
+                                <dd id="command-count" class="mt-1 text-2xl font-semibold text-white">0</dd>
+                            </div>
+                            <div>
+                                <dt class="text-sm font-medium text-gray-400">バージョン</dt>
+                                <dd id="version" class="mt-1 text-2xl font-semibold text-white">-</dd>
+                            </div>
+                        </dl>
+                    </div>
+                </div>
+
+                <!-- 稼働時間 -->
+                <div class="bg-gray-800 overflow-hidden shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <h3 class="text-lg leading-6 font-medium text-indigo-400">稼働時間</h3>
+                        <div class="mt-5">
+                            <div id="uptime" class="text-3xl font-mono text-white">0d 0h 0m 0s</div>
+                            <div class="mt-4 text-sm text-gray-400">
+                                起動日時: <span id="start-time">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- グラフ -->
+            <div class="mt-8 bg-gray-800 shadow rounded-lg p-6">
+                <h3 class="text-lg leading-6 font-medium text-indigo-400 mb-4">リソース使用状況</h3>
+                <div class="relative" style="height: 300px;">
+                    <canvas id="resourceChart"></canvas>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        class MetricsManager {
+            constructor(maxDataPoints = 30) {
+                this.maxDataPoints = maxDataPoints;
+                this.cpuData = [];
+                this.memoryData = [];
+                this.labels = [];
+                this.chart = null;
+                this.lastUpdate = null;
+                this.offlineTimeout = null;
+                
+                this.initChart();
+                this.startUpdates();
+            }
+
+            initChart() {
+                const ctx = document.getElementById('resourceChart').getContext('2d');
+                this.chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: this.labels,
+                        datasets: [{
+                            label: 'CPU使用率 (%)',
+                            data: this.cpuData,
+                            borderColor: 'rgb(59, 130, 246)',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }, {
+                            label: 'メモリ使用率 (MB)',
+                            data: this.memoryData,
+                            borderColor: 'rgb(147, 51, 234)',
+                            backgroundColor: 'rgba(147, 51, 234, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            yAxisID: 'y1'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: {
+                            duration: 300
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                suggestedMax: 100,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: 'rgba(255, 255, 255, 0.7)',
+                                    callback: value => `${value}%`
+                                }
+                            },
+                            y1: {
+                                beginAtZero: true,
+                                position: 'right',
+                                grid: {
+                                    drawOnChartArea: false
+                                },
+                                ticks: {
+                                    color: 'rgba(255, 255, 255, 0.7)',
+                                    callback: value => `${value}MB`
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: 'rgba(255, 255, 255, 0.7)',
+                                    maxRotation: 0,
+                                    autoSkip: true,
+                                    maxTicksLimit: 8
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: 'rgba(255, 255, 255, 0.7)',
+                                    usePointStyle: true,
+                                    pointStyle: 'circle'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            updateData(metrics) {
+                this.lastUpdate = Date.now();
+                clearTimeout(this.offlineTimeout);
+
+                // Update metrics displays
+                document.getElementById('cpu-usage').textContent = `${metrics.cpu}%`;
+                document.getElementById('cpu-bar').style.width = `${metrics.cpu}%`;
+                document.getElementById('memory-usage').textContent = `${metrics.memory.heapUsed} MB`;
+                document.getElementById('memory-bar').style.width = 
+                    `${(metrics.memory.heapUsed / metrics.memory.heapTotal * 100)}%`;
+
+                document.getElementById('guild-count').textContent = metrics.bot.guilds;
+                document.getElementById('user-count').textContent = metrics.bot.users;
+                document.getElementById('command-count').textContent = metrics.bot.commands;
+                document.getElementById('version').textContent = metrics.bot.version;
+
+                document.getElementById('uptime').textContent = 
+                    `${metrics.uptime.days}d ${metrics.uptime.hours}h ${metrics.uptime.minutes}m ${metrics.uptime.seconds}s`;
+
+                // Update graph data
+                const now = new Date().toLocaleTimeString();
+                
+                // Add new data points
+                this.labels.push(now);
+                this.cpuData.push(metrics.cpu);
+                this.memoryData.push(metrics.memory.heapUsed);
+
+                // Remove old data points if exceeding maxDataPoints
+                if (this.labels.length > this.maxDataPoints) {
+                    this.labels.shift();
+                    this.cpuData.shift();
+                    this.memoryData.shift();
+                }
+
+                // Update chart data
+                this.chart.data.labels = this.labels;
+                this.chart.data.datasets[0].data = this.cpuData;
+                this.chart.data.datasets[1].data = this.memoryData;
+
+                // Adjust memory scale
+                const maxMemory = Math.max(...this.memoryData);
+                this.chart.options.scales.y1.suggestedMax = maxMemory * 1.2;
+
+                // Update status indicator
+                this.updateStatusIndicator(true);
+
+                // Update the chart
+                this.chart.update('none');
+
+                // Set timeout for offline detection
+                this.offlineTimeout = setTimeout(() => {
+                    this.updateStatusIndicator(false);
+                }, 5000);
+            }
+
+            updateStatusIndicator(online) {
+                const indicator = document.getElementById('status-indicator');
+                if (online) {
+                    indicator.innerHTML = `
+                        <span class="flex h-3 w-3 relative">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                        </span>
+                        <span class="ml-2 text-green-400">オンライン</span>
+                    `;
+                } else {
+                    indicator.innerHTML = `
+                        <span class="flex h-3 w-3 relative">
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                        </span>
+                        <span class="ml-2 text-red-400">オフライン</span>
+                    `;
+                }
+            }
+
+            async fetchMetrics() {
+                try {
+                    const response = await fetch('/metrics');
+                    if (!response.ok) throw new Error('Failed to fetch metrics');
+                    const data = await response.json();
+                    this.updateData(data);
+                } catch (error) {
+                    console.error('Error fetching metrics:', error);
+                    this.updateStatusIndicator(false);
+                }
+            }
+
+            startUpdates() {
+                // Initial fetch
+                this.fetchMetrics();
+                
+                // Set up periodic updates
+                setInterval(() => this.fetchMetrics(), 1000);
+            }
+        }
+
+        // Initialize the metrics manager when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            window.metricsManager = new MetricsManager(30);
+        });
+    </script>
+</body>
+</html>
