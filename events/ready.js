@@ -8,7 +8,7 @@ module.exports = {
     once: true,
     async execute(client) {
         // ステータスを設定
-        client.user.setActivity('with Discord.js', { type: ActivityType.Playing });
+        client.user.setActivity('正常に稼働中', { type: ActivityType.Playing });
         
         // システム情報を取得
         const memoryUsage = process.memoryUsage();
