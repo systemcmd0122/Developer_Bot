@@ -22,6 +22,7 @@ module.exports = {
             // 特定のボットのメッセージの処理（20秒後に削除）
             const TARGET_BOT_IDS = [
                 '411916947773587456',
+                '940658205950885908',
             ];
 
             if (message.author.bot && TARGET_BOT_IDS.includes(message.author.id)) {
