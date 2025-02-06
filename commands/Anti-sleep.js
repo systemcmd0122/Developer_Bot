@@ -1,5 +1,12 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
+const { 
+    joinVoiceChannel, 
+    createAudioPlayer, 
+    createAudioResource, 
+    AudioPlayerStatus, 
+    NoSubscriberBehavior 
+} = require('@discordjs/voice');
+const fs = require('fs');
 const path = require('path');
 
 // アンチスリープの状態を保存するMap
@@ -69,6 +76,17 @@ module.exports = {
         const voiceChannel = member.voice.channel;
         const interval = interaction.options.getInteger('interval') || 5;
 
+        // 音声ファイルのパス
+        const soundFilePath = path.join(__dirname, '..', 'assets', 'alert.wav');
+
+        // ファイルが存在するか確認
+        if (!fs.existsSync(soundFilePath)) {
+            return interaction.reply({
+                content: '音声ファイルが見つかりません。管理者に連絡してください。',
+                ephemeral: true
+            });
+        }
+
         // ボイスチャンネルに接続
         const connection = joinVoiceChannel({
             channelId: voiceChannel.id,
@@ -76,12 +94,13 @@ module.exports = {
             adapterCreator: voiceChannel.guild.voiceAdapterCreator,
         });
 
-        // オーディオプレイヤーを作成
-        const player = createAudioPlayer();
+        // オーディオプレイヤーを作成 (NoSubscriberBehaviorを追加)
+        const player = createAudioPlayer({
+            behaviors: {
+                noSubscriber: NoSubscriberBehavior.Pause,
+            },
+        });
         connection.subscribe(player);
-
-        // 音声ファイルのパスを設定
-        const soundFile = path.join(__dirname, '..', 'assets', 'alert.mp3');
 
         // 定期実行の設定
         const intervalId = setInterval(() => {
@@ -91,18 +110,30 @@ module.exports = {
                 return;
             }
 
-            // 音声を再生
-            const resource = createAudioResource(soundFile);
-            player.play(resource);
+            try {
+                // 音声リソースを作成 (注意: .wav形式を推奨)
+                const resource = createAudioResource(soundFilePath, {
+                    inlineVolume: true
+                });
+                
+                // 音量を調整 (0.1 = 10%)
+                resource.volume.setVolume(0.1);
 
-            // ステータス変更をログに記録
-            player.on(AudioPlayerStatus.Playing, () => {
-                console.log(`Playing anti-sleep alert for ${member.user.tag}`);
-            });
+                // 音声を再生
+                player.play(resource);
 
-            player.on('error', error => {
-                console.error(`Error playing anti-sleep alert: ${error.message}`);
-            });
+                // ステータス変更をログに記録
+                player.on(AudioPlayerStatus.Playing, () => {
+                    console.log(`Playing anti-sleep alert for ${member.user.tag}`);
+                });
+
+                player.on('error', error => {
+                    console.error(`Error playing anti-sleep alert: ${error.message}`);
+                });
+            } catch (error) {
+                console.error('音声再生エラー:', error);
+                this.stopAntiSleep(member.id);
+            }
         }, interval * 60 * 1000); // 分をミリ秒に変換
 
         // 状態を保存
