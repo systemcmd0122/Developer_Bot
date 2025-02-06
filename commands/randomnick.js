@@ -1,4 +1,7 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
+
+// ここに権限を持つロールのIDを設定
+const PERMISSION_ROLE_ID = '1336993137406771272'; // あなたの作成したロールのIDに置き換えてください
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -10,10 +13,6 @@ module.exports = {
                 .setMinValue(1)
                 .setMaxValue(60)
                 .setRequired(false))
-        .addRoleOption(option =>
-            option.setName('required_role')
-                .setDescription('このコマンドを使用するために必要なロール（指定しない場合は誰でも使用可能）')
-                .setRequired(false))
         .addBooleanOption(option =>
             option.setName('revert')
                 .setDescription('すぐに元のニックネームに戻す場合はtrue')
@@ -21,22 +20,18 @@ module.exports = {
 
     async execute(interaction) {
         try {
+            // 権限チェック
+            if (!interaction.member.roles.cache.has(PERMISSION_ROLE_ID)) {
+                return await interaction.reply({
+                    content: 'このコマンドを使用する権限がありません。',
+                    ephemeral: true
+                });
+            }
+
             // リバートオプションのチェック
             const shouldRevert = interaction.options.getBoolean('revert') || false;
             
-            // 必要なロールのチェック
-            const requiredRole = interaction.options.getRole('required_role');
-            if (requiredRole) {
-                const hasRole = interaction.member.roles.cache.has(requiredRole.id);
-                if (!hasRole && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
-                    return await interaction.reply({
-                        content: `このコマンドを使用するには ${requiredRole.name} ロールが必要です。`,
-                        ephemeral: true
-                    });
-                }
-            }
-
-            // メンバー情報の取得
+            // メンバー情報の取得（ボットを除外）
             const members = await interaction.guild.members.fetch();
             const realMembers = members.filter(member => !member.user.bot);
 
@@ -47,7 +42,7 @@ module.exports = {
 
                 for (const [, member] of realMembers) {
                     try {
-                        if (member.manageable) {
+                        if (member.id === interaction.member.id || member.manageable) {
                             if (member.nickname) {
                                 await member.setNickname(null);
                                 revertCount++;
@@ -79,7 +74,7 @@ module.exports = {
 
             for (const [, member] of realMembers) {
                 try {
-                    if (member.manageable) {
+                    if (member.id === interaction.member.id || member.manageable) {
                         previousNicknames.set(member.id, member.displayName);
                         await member.setNickname(selectedName);
                         changeCount++;
@@ -100,7 +95,7 @@ module.exports = {
                 for (const [memberId, previousNick] of previousNicknames) {
                     try {
                         const member = await interaction.guild.members.fetch(memberId);
-                        if (member && member.manageable) {
+                        if (member && (member.id === interaction.member.id || member.manageable)) {
                             await member.setNickname(previousNick);
                             revertCount++;
                         }
