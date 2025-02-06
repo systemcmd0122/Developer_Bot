@@ -17,10 +17,14 @@ module.exports = {
                 const channel = newPresence.client.channels.cache.get(GAME_ACTIVITY_CHANNEL_ID);
                 if (!channel) return;
 
+                // Get member object to access displayName
+                const member = newPresence.member;
+                if (!member) return;
+
                 const gameStartEmbed = new EmbedBuilder()
                     .setColor('#00ff00')
                     .setTitle('🎮 ゲーム開始')
-                    .setDescription(`**${newPresence.user.username}** が **${newGame.name}** をプレイし始めました！`)
+                    .setDescription(`**${member.displayName}** が **${newGame.name}** をプレイし始めました！`)
                     .setThumbnail(newPresence.user.displayAvatarURL())
                     .addFields(
                         { 
@@ -30,7 +34,7 @@ module.exports = {
                         },
                         { 
                             name: 'プレイヤー', 
-                            value: newPresence.user.toString(), 
+                            value: member.toString(), 
                             inline: true 
                         }
                     )
@@ -38,7 +42,7 @@ module.exports = {
 
                 await channel.send({ embeds: [gameStartEmbed] });
 
-                console.log(chalk.green(`✓ Game Activity: ${newPresence.user.username} started playing ${newGame.name}`));
+                console.log(chalk.green(`✓ Game Activity: ${member.displayName} started playing ${newGame.name}`));
             } catch (error) {
                 console.error(chalk.red('✗ Error tracking game activity:'), error);
             }
