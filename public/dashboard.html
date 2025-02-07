@@ -27,10 +27,26 @@
         body {
             font-family: 'Inter', sans-serif;
         }
+        .command-list {
+            max-height: 400px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+        .command-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        .command-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .command-list::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex flex-col">
-    <!-- Navigation -->
+    <!-- Previous navigation code remains the same -->
     <nav class="bg-discord-dark shadow-lg sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
@@ -59,6 +75,7 @@
     <main class="flex-grow container mx-auto px-4 py-8 space-y-8">
         <!-- System Cards Grid -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Previous cards remain the same -->
             <!-- System Information Card -->
             <div class="bg-discord-dark rounded-xl shadow-lg p-6 space-y-4 transform transition hover:scale-105 hover:shadow-xl">
                 <div class="flex justify-between items-center">
@@ -134,6 +151,37 @@
             </div>
         </div>
 
+        <!-- New Command Usage Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Command Usage Chart -->
+            <div class="bg-discord-dark rounded-xl shadow-lg p-6 space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-xl font-semibold text-discord-blurple">コマンド使用状況</h3>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                </div>
+                <div class="relative h-96">
+                    <canvas id="commandUsageChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Recent Commands List -->
+            <div class="bg-discord-dark rounded-xl shadow-lg p-6 space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-xl font-semibold text-discord-blurple">最近のコマンド実行</h3>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <div class="command-list">
+                    <ul id="recent-commands" class="space-y-2">
+                        <!-- Commands will be inserted here dynamically -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+
         <!-- Resource Usage Chart -->
         <div class="bg-discord-dark rounded-xl shadow-lg p-6 space-y-4">
             <div class="flex justify-between items-center">
@@ -161,14 +209,18 @@
                 this.memoryData = [];
                 this.labels = [];
                 this.chart = null;
+                this.commandUsageChart = null;
                 this.lastUpdate = null;
                 this.offlineTimeout = null;
+                this.commandUsageData = new Map();
+                this.recentCommands = [];
                 
-                this.initChart();
+                this.initCharts();
                 this.startUpdates();
             }
 
-            initChart() {
+            initCharts() {
+                // Resource usage chart initialization
                 const ctx = document.getElementById('resourceChart').getContext('2d');
                 const gradient1 = ctx.createLinearGradient(0, 0, 0, 400);
                 gradient1.addColorStop(0, 'rgba(59, 130, 246, 0.5)');
@@ -210,8 +262,7 @@
                         scales: {
                             y: {
                                 beginAtZero: true,
-                                suggeste: true,
-                                 max: 100,
+                                suggestedMax: 100,
                                 grid: {
                                     color: 'rgba(255, 255, 255, 0.1)'
                                 },
@@ -254,6 +305,94 @@
                         }
                     }
                 });
+
+                // Command usage chart initialization
+                const commandCtx = document.getElementById('commandUsageChart').getContext('2d');
+                this.commandUsageChart = new Chart(commandCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: [],
+                        datasets: [{
+                            label: 'コマンド使用回数',
+                            data: [],
+                            backgroundColor: 'rgba(88, 101, 242, 0.8)',
+                            borderColor: 'rgb(88, 101, 242)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: 'rgba(255, 255, 255, 0.7)',
+                                    stepSize: 1
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                },
+                                ticks: {
+                                    color: 'rgba(255, 255, 255, 0.7)',
+                                    maxRotation: 45
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            updateCommandUsage(commandData) {
+                // Update command usage data
+                for (const [command, count] of Object.entries(commandData.usage)) {
+                    this.commandUsageData.set(command, count);
+                }
+
+                // Update recent commands list
+                if (commandData.recent && commandData.recent.length > 0) {
+                    this.recentCommands = commandData.recent;
+                    this.updateRecentCommandsList();
+                }
+
+                // Update command usage chart
+                const sortedCommands = Array.from(this.commandUsageData.entries())
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 10);
+
+                this.commandUsageChart.data.labels = sortedCommands.map(([command]) => command);
+                this.commandUsageChart.data.datasets[0].data = sortedCommands.map(([_, count]) => count);
+                this.commandUsageChart.update();
+            }
+
+            updateRecentCommandsList() {
+                const recentCommandsList = document.getElementById('recent-commands');
+                recentCommandsList.innerHTML = '';
+
+                this.recentCommands.forEach(cmd => {
+                    const li = document.createElement('li');
+                    li.className = 'bg-gray-800 rounded-lg p-3 flex justify-between items-center';
+                    li.innerHTML = `
+                        <div class="flex items-center space-x-3">
+                            <span class="text-discord-blurple font-semibold">/${cmd.command}</span>
+                            <span class="text-gray-400 text-sm">${cmd.user}</span>
+                        </div>
+                        <span class="text-gray-400 text-sm">${new Date(cmd.timestamp).toLocaleTimeString()}</span>
+                    `;
+                    recentCommandsList.appendChild(li);
+                });
             }
 
             updateData(metrics) {
@@ -284,37 +423,34 @@
                 document.getElementById('uptime').textContent = 
                     `${metrics.uptime.days}d ${metrics.uptime.hours}h ${metrics.uptime.minutes}m ${metrics.uptime.seconds}s`;
 
+                // Update command usage if available
+                if (metrics.commands) {
+                    this.updateCommandUsage(metrics.commands);
+                }
+
                 // Update graph data
                 const now = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                 
-                // Add new data points
                 this.labels.push(now);
                 this.cpuData.push(metrics.cpu);
                 this.memoryData.push(metrics.memory.heapUsed);
 
-                // Remove old data points if exceeding maxDataPoints
                 if (this.labels.length > this.maxDataPoints) {
                     this.labels.shift();
                     this.cpuData.shift();
                     this.memoryData.shift();
                 }
 
-                // Update chart data
                 this.chart.data.labels = this.labels;
                 this.chart.data.datasets[0].data = this.cpuData;
                 this.chart.data.datasets[1].data = this.memoryData;
 
-                // Adjust memory scale
                 const maxMemory = Math.max(...this.memoryData);
                 this.chart.options.scales.y1.suggestedMax = maxMemory * 1.2;
 
-                // Update status indicator
                 this.updateStatusIndicator(true);
-
-                // Update the chart
                 this.chart.update('none');
 
-                // Set timeout for offline detection
                 this.offlineTimeout = setTimeout(() => {
                     this.updateStatusIndicator(false);
                 }, 5000);

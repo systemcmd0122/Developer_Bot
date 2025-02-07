@@ -33,7 +33,6 @@ const client = new Client({
         GatewayIntentBits.GuildPresences,
         GatewayIntentBits.GuildVoiceStates
     ],
-    // Add reconnection settings
     failIfNotExists: false,
     retryLimit: 5,
     presence: {
@@ -47,6 +46,32 @@ client.friendCodes = {};
 client.roleBoards = {};
 client.userPreferences = {};
 client.startTime = Date.now();
+
+// New command tracking
+const commandStats = {
+    usage: {},
+    recent: []
+};
+
+// Track command usage
+function trackCommand(commandName, user) {
+    // Update usage count
+    commandStats.usage[commandName] = (commandStats.usage[commandName] || 0) + 1;
+    
+    // Add to recent commands
+    const recentCommand = {
+        command: commandName,
+        user: user.username,
+        timestamp: new Date().toISOString()
+    };
+    
+    commandStats.recent.unshift(recentCommand);
+    
+    // Keep only last 10 commands
+    if (commandStats.recent.length > 10) {
+        commandStats.recent.pop();
+    }
+}
 
 // Enhanced metrics collection
 function getMetrics() {
@@ -89,7 +114,8 @@ function getMetrics() {
                 platform: `${os.type()} ${os.release()}`,
                 arch: os.arch(),
                 nodejs: process.version
-            }
+            },
+            commands: commandStats // Add command statistics to metrics
         };
     } catch (error) {
         console.error('Error getting metrics:', error);
@@ -233,7 +259,7 @@ async function registerCommands(commands, retries = 3) {
     }
 }
 
-// Enhanced interaction handling
+// Enhanced interaction handling with command tracking
 client.on(Events.InteractionCreate, async interaction => {
     try {
         if (interaction.isChatInputCommand()) {
@@ -242,6 +268,9 @@ client.on(Events.InteractionCreate, async interaction => {
                 console.error(chalk.red(`No command matching ${interaction.commandName} was found.`));
                 return;
             }
+
+            // Track command usage before execution
+            trackCommand(interaction.commandName, interaction.user);
 
             try {
                 await command.execute(interaction);
