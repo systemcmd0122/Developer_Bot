@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 
-// プレイ時間を保存するためのMap
+// ゲームセッションを保存するためのグローバルMap
 const userGameSessions = new Map();
 
 module.exports = {
@@ -16,6 +16,11 @@ module.exports = {
                 .setName('total')
                 .setDescription('総プレイ時間を表示します')),
 
+    // ゲームセッションMapへのアクセスを提供
+    getUserGameSessions() {
+        return userGameSessions;
+    },
+
     // ゲーム開始時の処理
     trackGameStart(userId, gameName, startTime) {
         try {
@@ -30,8 +35,15 @@ module.exports = {
                 currentSession: null
             };
             
+            // 既存のセッションがある場合は終了処理
+            if (gameData.currentSession) {
+                this.trackGameEnd(userId, gameName, startTime);
+            }
+            
             gameData.currentSession = startTime;
             userSessions.set(gameName, gameData);
+
+            console.log(`Started tracking game session for user ${userId} playing ${gameName}`);
         } catch (error) {
             console.error('Error in trackGameStart:', error);
         }
@@ -58,6 +70,8 @@ module.exports = {
             gameData.currentSession = null;
             
             userSessions.set(gameName, gameData);
+
+            console.log(`Ended tracking game session for user ${userId} playing ${gameName}`);
         } catch (error) {
             console.error('Error in trackGameEnd:', error);
         }
