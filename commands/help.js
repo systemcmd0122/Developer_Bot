@@ -10,61 +10,76 @@ module.exports = {
                 .setRequired(false)),
 
     async execute(interaction) {
-        const { client } = interaction;
-        const requestedCommand = interaction.options.getString('command');
+        try {
+            const { client } = interaction;
+            const requestedCommand = interaction.options.getString('command');
 
-        // 特定のコマンドの詳細を表示
-        if (requestedCommand) {
-            const command = client.commands.get(requestedCommand.toLowerCase());
-            if (!command) {
-                return interaction.reply({
-                    content: `\`${requestedCommand}\`というコマンドは見つかりませんでした。`,
-                    ephemeral: true
+            // 特定のコマンドの詳細を表示
+            if (requestedCommand) {
+                const command = client.commands.get(requestedCommand.toLowerCase());
+                if (!command) {
+                    return await interaction.reply({
+                        content: `\`${requestedCommand}\`というコマンドは見つかりませんでした。`,
+                        ephemeral: true
+                    });
+                }
+
+                const embed = new EmbedBuilder()
+                    .setColor('#0099ff')
+                    .setTitle(`/${command.data.name}`)
+                    .setDescription(command.data.description);
+
+                // コマンドのオプション情報を追加
+                if (command.data.options?.length > 0) {
+                    const usage = `/${command.data.name} ${command.data.options.map(opt => 
+                        opt.required ? `<${opt.name}>` : `[${opt.name}]`
+                    ).join(' ')}`;
+
+                    embed.addFields(
+                        { name: '使い方', value: usage },
+                        {
+                            name: 'オプション',
+                            value: command.data.options.map(opt => 
+                                `• ${opt.name}: ${opt.description}`
+                            ).join('\n')
+                        }
+                    );
+                } else {
+                    embed.addFields({ name: '使い方', value: `/${command.data.name}` });
+                }
+
+                return await interaction.reply({ embeds: [embed], ephemeral: true });
+            }
+
+            // コマンド一覧を表示
+            const commandList = [];
+            for (const [name, cmd] of client.commands) {
+                commandList.push({
+                    name: name,
+                    description: cmd.data.description
                 });
             }
 
             const embed = new EmbedBuilder()
                 .setColor('#0099ff')
-                .setTitle(`/${command.data.name}`)
-                .setDescription(command.data.description)
-                .addFields({
-                    name: '使い方',
-                    value: `/${command.data.name} ${command.data.options?.map(opt => 
-                        opt.required ? `<${opt.name}>` : `[${opt.name}]`
-                    ).join(' ') || ''}`
-                });
+                .setTitle('コマンド一覧')
+                .setDescription([
+                    'スラッシュコマンドで簡単に操作できます！',
+                    '',
+                    '詳しい使い方を見るには:',
+                    '`/help [コマンド名]` と入力してください',
+                    '',
+                    '**使用可能なコマンド:**',
+                    ...commandList.map(cmd => `• \`/${cmd.name}\` - ${cmd.description}`)
+                ].join('\n'));
 
-            if (command.data.options?.length > 0) {
-                embed.addFields({
-                    name: 'オプション',
-                    value: command.data.options.map(opt => 
-                        `• ${opt.name}: ${opt.description}`
-                    ).join('\n')
-                });
-            }
-
-            return interaction.reply({ embeds: [embed], ephemeral: true });
+            await interaction.reply({ embeds: [embed], ephemeral: true });
+        } catch (error) {
+            console.error('Help command error:', error);
+            await interaction.reply({
+                content: 'コマンドの実行中にエラーが発生しました。',
+                ephemeral: true
+            });
         }
-
-        // コマンド一覧を表示
-        const commandList = client.commands.map(cmd => ({
-            name: cmd.data.name,
-            description: cmd.data.description
-        }));
-
-        const embed = new EmbedBuilder()
-            .setColor('#0099ff')
-            .setTitle('コマンド一覧')
-            .setDescription([
-                'スラッシュコマンドで簡単に操作できます！',
-                '',
-                '詳しい使い方を見るには:',
-                '`/help [コマンド名]` と入力してください',
-                '',
-                '**使用可能なコマンド:**',
-                ...commandList.map(cmd => `• \`/${cmd.name}\` - ${cmd.description}`)
-            ].join('\n'));
-
-        await interaction.reply({ embeds: [embed], ephemeral: true });
     }
 };
