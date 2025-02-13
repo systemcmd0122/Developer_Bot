@@ -1,5 +1,6 @@
 // commands/viewactivity.js
 const { SlashCommandBuilder } = require('discord.js');
+const { loadSettings } = require('../utils/settings');
 
 module.exports = {
     data: new SlashCommandBuilder()
