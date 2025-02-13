@@ -1,5 +1,22 @@
+// events/gameActivityTrack.js
 const { Events, EmbedBuilder } = require('discord.js');
 const chalk = require('chalk');
+const fs = require('fs').promises;
+const path = require('path');
+
+const SETTINGS_FILE = path.join(__dirname, '..', 'data', 'activitySettings.json');
+
+async function loadSettings() {
+    try {
+        const data = await fs.readFile(SETTINGS_FILE, 'utf8');
+        return JSON.parse(data);
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            return {};
+        }
+        throw error;
+    }
+}
 
 module.exports = {
     name: Events.PresenceUpdate,
@@ -10,6 +27,13 @@ module.exports = {
 
             // ユーザーが不在の場合は処理しない
             if (!newPresence?.user) return;
+
+            // ユーザーの通知設定を確認
+            const settings = await loadSettings();
+            const userSetting = settings[newPresence.user.id];
+            
+            // 設定がオフの場合は通知をスキップ（undefined の場合はデフォルトでオン）
+            if (userSetting === false) return;
 
             const oldGame = oldPresence?.activities?.find(activity => activity.type === 0);
             const newGame = newPresence?.activities?.find(activity => activity.type === 0);
