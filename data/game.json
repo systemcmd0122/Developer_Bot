@@ -156,5 +156,16 @@
         }
       ]
     }
+  },
+  "1125784686661214348": {
+    "Friday Night Funkin'": {
+      "totalTime": 0,
+      "sessions": [
+        {
+          "start": 1739541013268,
+          "end": null
+        }
+      ]
+    }
   }
 }
