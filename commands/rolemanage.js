@@ -1,5 +1,5 @@
 // commands/rolemanage.js
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -8,24 +8,58 @@ module.exports = {
         .addSubcommand(subcommand => 
             subcommand
                 .setName('create')
-                .setDescription('新しいロール選択ボードを作成')
+                .setDescription('新しいロールボードを作成')
                 .addStringOption(option => 
                     option
                         .setName('name')
-                        .setDescription('ロール選択ボードの名前')
+                        .setDescription('ロールボードの名前')
                         .setRequired(true)
                 )
                 .addStringOption(option => 
                     option
                         .setName('description')
-                        .setDescription('ロール選択ボードの説明')
+                        .setDescription('ロールボードの説明')
                         .setRequired(false)
+                )
+        )
+        .addSubcommand(subcommand => 
+            subcommand
+                .setName('add')
+                .setDescription('ロールボードにロールを追加')
+                .addStringOption(option => 
+                    option
+                        .setName('board')
+                        .setDescription('ロールボードの名前')
+                        .setRequired(true)
+                )
+                .addRoleOption(option => 
+                    option
+                        .setName('role')
+                        .setDescription('追加するロール')
+                        .setRequired(true)
                 )
                 .addStringOption(option => 
                     option
-                        .setName('category')
-                        .setDescription('ロールのカテゴリ（オプション）')
+                        .setName('description')
+                        .setDescription('ロールの説明')
                         .setRequired(false)
+                )
+        )
+        .addSubcommand(subcommand => 
+            subcommand
+                .setName('remove')
+                .setDescription('ロールボードからロールを削除')
+                .addStringOption(option => 
+                    option
+                        .setName('board')
+                        .setDescription('ロールボードの名前')
+                        .setRequired(true)
+                )
+                .addRoleOption(option => 
+                    option
+                        .setName('role')
+                        .setDescription('削除するロール')
+                        .setRequired(true)
                 )
         )
         .addSubcommand(subcommand => 
@@ -46,185 +80,224 @@ module.exports = {
         ),
 
     async execute(interaction) {
-        const serverRoleBoards = interaction.client.roleBoards || {};
-        interaction.client.roleBoards = serverRoleBoards;
+        const serverRoleBoards = interaction.client.roleBoards;
+        if (!interaction.client.roleBoards[interaction.guildId]) {
+            interaction.client.roleBoards[interaction.guildId] = {};
+        }
 
         const subcommand = interaction.options.getSubcommand();
 
-        if (subcommand === 'create') {
-            const name = interaction.options.getString('name');
-            const description = interaction.options.getString('description') || 'ロールを選択してください';
-            const category = interaction.options.getString('category');
+        switch (subcommand) {
+            case 'create': {
+                const name = interaction.options.getString('name');
+                const description = interaction.options.getString('description') || 'ロールを選択してください';
 
-            const roles = interaction.guild.roles.cache
-                .filter(role => 
-                    role.name !== '@everyone' && 
-                    !role.managed && 
-                    role.position < interaction.guild.members.me.roles.highest.position &&
-                    !role.permissions.has('Administrator')
-                )
-                .sort((a, b) => b.position - a.position);
+                if (serverRoleBoards[interaction.guildId][name]) {
+                    return interaction.reply({
+                        content: 'そのロールボードは既に存在します。',
+                        ephemeral: true
+                    });
+                }
 
-            if (roles.size === 0) {
+                const embed = new EmbedBuilder()
+                    .setTitle(`🎭 ${name}`)
+                    .setDescription(description)
+                    .setColor('#ff00ff')
+                    .setTimestamp();
+
+                const message = await interaction.channel.send({
+                    embeds: [embed],
+                    components: []
+                });
+
+                serverRoleBoards[interaction.guildId][name] = {
+                    messageId: message.id,
+                    channelId: interaction.channel.id,
+                    roles: {},
+                    description: description
+                };
+
                 return interaction.reply({
-                    content: '選択可能なロールがありません。',
+                    content: `ロールボード「${name}」を作成しました。`,
                     ephemeral: true
                 });
             }
 
-            const filteredRoles = category 
-                ? roles.filter(role => role.name.toLowerCase().includes(category.toLowerCase()))
-                : roles;
+            case 'add': {
+                const boardName = interaction.options.getString('board');
+                const role = interaction.options.getRole('role');
+                const description = interaction.options.getString('description') || '説明なし';
 
-            if (filteredRoles.size === 0) {
+                const board = serverRoleBoards[interaction.guildId][boardName];
+                if (!board) {
+                    return interaction.reply({
+                        content: 'そのロールボードは存在しません。',
+                        ephemeral: true
+                    });
+                }
+
+                if (board.roles[role.id]) {
+                    return interaction.reply({
+                        content: 'そのロールは既にボードに追加されています。',
+                        ephemeral: true
+                    });
+                }
+
+                board.roles[role.id] = {
+                    name: role.name,
+                    description: description
+                };
+
+                const channel = await interaction.guild.channels.fetch(board.channelId);
+                const message = await channel.messages.fetch(board.messageId);
+
+                const embed = EmbedBuilder.from(message.embeds[0]);
+                const components = [];
+
+                for (const [roleId, roleData] of Object.entries(board.roles)) {
+                    const button = new ButtonBuilder()
+                        .setCustomId(`role-${roleId}`)
+                        .setLabel(roleData.name)
+                        .setStyle(ButtonStyle.Primary);
+
+                    const row = new ActionRowBuilder().addComponents(button);
+                    components.push(row);
+                }
+
+                await message.edit({
+                    embeds: [embed],
+                    components: components
+                });
+
                 return interaction.reply({
-                    content: `カテゴリ「${category}」に該当するロールがありません。`,
+                    content: `ロール「${role.name}」をボード「${boardName}」に追加しました。`,
                     ephemeral: true
                 });
             }
 
-            const embed = new EmbedBuilder()
-                .setTitle(`🎭 ${name}`)
-                .setDescription(description)
-                .setColor('#ff00ff')
-                .setTimestamp();
+            case 'remove': {
+                const boardName = interaction.options.getString('board');
+                const role = interaction.options.getRole('role');
 
-            const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId(`role-board-${name}`)
-                .setPlaceholder('ロールを選択')
-                .setMinValues(0)
-                .setMaxValues(filteredRoles.size)
-                .addOptions(
-                    filteredRoles.map(role => ({
-                        label: role.name,
-                        value: role.id,
-                        description: `メンバー数: ${role.members.size}`,
-                        default: interaction.member.roles.cache.has(role.id)
-                    }))
-                );
+                const board = serverRoleBoards[interaction.guildId][boardName];
+                if (!board) {
+                    return interaction.reply({
+                        content: 'そのロールボードは存在しません。',
+                        ephemeral: true
+                    });
+                }
 
-            const row = new ActionRowBuilder().addComponents(selectMenu);
+                if (!board.roles[role.id]) {
+                    return interaction.reply({
+                        content: 'そのロールはボードに存在しません。',
+                        ephemeral: true
+                    });
+                }
 
-            const roleBoard = await interaction.channel.send({
-                embeds: [embed],
-                components: [row]
-            });
+                delete board.roles[role.id];
 
-            serverRoleBoards[name] = {
-                messageId: roleBoard.id,
-                channelId: interaction.channel.id,
-                roles: Array.from(filteredRoles.keys()),
-                category: category
-            };
+                const channel = await interaction.guild.channels.fetch(board.channelId);
+                const message = await channel.messages.fetch(board.messageId);
 
-            return interaction.reply({
-                content: `ロールボード「${name}」を作成しました。`,
-                ephemeral: true
-            });
-        }
+                const embed = EmbedBuilder.from(message.embeds[0]);
+                const components = [];
 
-        if (subcommand === 'list') {
-            if (Object.keys(serverRoleBoards).length === 0) {
+                for (const [roleId, roleData] of Object.entries(board.roles)) {
+                    const button = new ButtonBuilder()
+                        .setCustomId(`role-${roleId}`)
+                        .setLabel(roleData.name)
+                        .setStyle(ButtonStyle.Primary);
+
+                    const row = new ActionRowBuilder().addComponents(button);
+                    components.push(row);
+                }
+
+                await message.edit({
+                    embeds: [embed],
+                    components: components
+                });
+
                 return interaction.reply({
-                    content: '現在、ロールボードは作成されていません。',
+                    content: `ロール「${role.name}」をボード「${boardName}」から削除しました。`,
                     ephemeral: true
                 });
             }
 
-            const embed = new EmbedBuilder()
-                .setTitle('🎭 ロールボード一覧')
-                .setColor('#0099ff');
+            case 'list': {
+                const boards = serverRoleBoards[interaction.guildId];
+                if (Object.keys(boards).length === 0) {
+                    return interaction.reply({
+                        content: '現在、ロールボードは作成されていません。',
+                        ephemeral: true
+                    });
+                }
 
-            Object.entries(serverRoleBoards).forEach(([name, board]) => {
-                embed.addFields({
-                    name: name,
-                    value: `カテゴリ: ${board.category || 'なし'}\nロール数: ${board.roles.length}`,
-                    inline: false
-                });
-            });
+                const embed = new EmbedBuilder()
+                    .setTitle('🎭 ロールボード一覧')
+                    .setColor('#0099ff');
 
-            return interaction.reply({ embeds: [embed], ephemeral: true });
-        }
+                for (const [name, board] of Object.entries(boards)) {
+                    const roleCount = Object.keys(board.roles).length;
+                    embed.addFields({
+                        name: name,
+                        value: `ロール数: ${roleCount}\n説明: ${board.description}`,
+                        inline: false
+                    });
+                }
 
-        if (subcommand === 'delete') {
-            const name = interaction.options.getString('name');
-
-            if (!serverRoleBoards[name]) {
-                return interaction.reply({
-                    content: `ロールボード「${name}」は存在しません。`,
-                    ephemeral: true
-                });
+                return interaction.reply({ embeds: [embed], ephemeral: true });
             }
 
-            const board = serverRoleBoards[name];
-            const channel = interaction.guild.channels.cache.get(board.channelId);
+            case 'delete': {
+                const name = interaction.options.getString('name');
 
-            if (channel) {
+                if (!serverRoleBoards[interaction.guildId][name]) {
+                    return interaction.reply({
+                        content: `ロールボード「${name}」は存在しません。`,
+                        ephemeral: true
+                    });
+                }
+
+                const board = serverRoleBoards[interaction.guildId][name];
+                const channel = await interaction.guild.channels.fetch(board.channelId);
+
                 try {
                     const message = await channel.messages.fetch(board.messageId);
                     await message.delete();
                 } catch (error) {
                     console.error('メッセージ削除中にエラーが発生:', error);
                 }
+
+                delete serverRoleBoards[interaction.guildId][name];
+
+                return interaction.reply({
+                    content: `ロールボード「${name}」を削除しました。`,
+                    ephemeral: true
+                });
             }
-
-            delete serverRoleBoards[name];
-
-            return interaction.reply({
-                content: `ロールボード「${name}」を削除しました。`,
-                ephemeral: true
-            });
         }
     },
 
-    async handleRoleInteraction(interaction) {
-        if (!interaction.isStringSelectMenu() || !interaction.customId.startsWith('role-board-')) {
+    async handleRoleButton(interaction) {
+        if (!interaction.isButton() || !interaction.customId.startsWith('role-')) {
             return;
         }
 
-        if (interaction.replied || interaction.deferred) {
-            return;
-        }
+        const roleId = interaction.customId.replace('role-', '');
+        const member = interaction.member;
 
-        const member = await interaction.guild.members.fetch(interaction.user.id);
-        const roleBoards = interaction.client.roleBoards;
-        const boardName = interaction.customId.replace('role-board-', '');
-        const board = roleBoards[boardName];
-
-        if (!board) {
-            return interaction.reply({
-                content: 'このロールボードは無効です。',
+        if (member.roles.cache.has(roleId)) {
+            await member.roles.remove(roleId);
+            await interaction.reply({
+                content: `<@&${roleId}>を削除しました。`,
+                ephemeral: true
+            });
+        } else {
+            await member.roles.add(roleId);
+            await interaction.reply({
+                content: `<@&${roleId}>を追加しました。`,
                 ephemeral: true
             });
         }
-
-        const currentRoles = member.roles.cache
-            .filter(role => board.roles.includes(role.id))
-            .map(role => role.id);
-        
-        const rolesToAdd = interaction.values.filter(id => !currentRoles.includes(id));
-        const rolesToRemove = currentRoles.filter(id => !interaction.values.includes(id));
-
-        await member.roles.add(rolesToAdd);
-        await member.roles.remove(rolesToRemove);
-
-        const addedRoles = rolesToAdd.map(id => `<@&${id}>`).join(', ') || 'なし';
-        const removedRoles = rolesToRemove.map(id => `<@&${id}>`).join(', ') || 'なし';
-
-        const resultEmbed = new EmbedBuilder()
-            .setTitle(`🎭 ロールボード: ${boardName}`)
-            .addFields(
-                { name: '追加したロール', value: addedRoles, inline: false },
-                { name: '削除したロール', value: removedRoles, inline: false }
-            )
-            .setColor('#00ff00')
-            .setTimestamp();
-
-        await interaction.deferUpdate();
-
-        await interaction.followUp({
-            embeds: [resultEmbed],
-            ephemeral: true
-        });
     }
 };

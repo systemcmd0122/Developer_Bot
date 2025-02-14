@@ -265,17 +265,14 @@ client.on(Events.InteractionCreate, async interaction => {
         if (interaction.isChatInputCommand()) {
             const command = client.commands.get(interaction.commandName);
             if (!command) {
-                console.error(chalk.red(`No command matching ${interaction.commandName} was found.`));
+                console.error(`No command matching ${interaction.commandName} was found.`);
                 return;
             }
-
-            // Track command usage before execution
-            trackCommand(interaction.commandName, interaction.user);
 
             try {
                 await command.execute(interaction);
             } catch (error) {
-                console.error(chalk.red('Error executing command:'), error);
+                console.error('Error executing command:', error);
                 const errorMessage = 'コマンドの実行中にエラーが発生しました。';
                 if (interaction.replied || interaction.deferred) {
                     await interaction.followUp({ content: errorMessage, ephemeral: true });
@@ -284,14 +281,14 @@ client.on(Events.InteractionCreate, async interaction => {
                 }
             }
         }
-        else if (interaction.isStringSelectMenu() && interaction.customId.startsWith('role-board-')) {
+        else if (interaction.isButton() && interaction.customId.startsWith('role-')) {
             const roleManageCommand = client.commands.get('rolemanage');
-            if (roleManageCommand && roleManageCommand.handleRoleInteraction) {
-                await roleManageCommand.handleRoleInteraction(interaction);
+            if (roleManageCommand && roleManageCommand.handleRoleButton) {
+                await roleManageCommand.handleRoleButton(interaction);
             }
         }
     } catch (error) {
-        console.error(chalk.red('Error handling interaction:'), error);
+        console.error('Error handling interaction:', error);
     }
 });
 
