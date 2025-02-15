@@ -38,18 +38,9 @@ module.exports = {
             const oldGame = oldPresence?.activities?.find(activity => activity.type === 0);
             const newGame = newPresence?.activities?.find(activity => activity.type === 0);
 
-            // プレイ時間コマンドの取得
-            const playtimeCommand = newPresence.client.commands.get('playtime');
-            if (!playtimeCommand) {
-                console.error('Playtime command not found');
-                return;
-            }
-
             // ゲーム開始時の処理
             if (!oldGame && newGame) {
                 try {
-                    playtimeCommand.trackGameStart(newPresence.user.id, newGame.name, Date.now());
-
                     const channel = await newPresence.client.channels.fetch(GAME_ACTIVITY_CHANNEL_ID);
                     if (!channel) return;
 
@@ -76,8 +67,6 @@ module.exports = {
             // ゲーム終了時の処理
             else if (oldGame && !newGame) {
                 try {
-                    playtimeCommand.trackGameEnd(newPresence.user.id, oldGame.name, Date.now());
-
                     const channel = await newPresence.client.channels.fetch(GAME_ACTIVITY_CHANNEL_ID);
                     if (!channel) return;
 
@@ -104,9 +93,6 @@ module.exports = {
             // ゲーム切り替え時の処理
             else if (oldGame && newGame && oldGame.name !== newGame.name) {
                 try {
-                    playtimeCommand.trackGameEnd(newPresence.user.id, oldGame.name, Date.now());
-                    playtimeCommand.trackGameStart(newPresence.user.id, newGame.name, Date.now());
-
                     const channel = await newPresence.client.channels.fetch(GAME_ACTIVITY_CHANNEL_ID);
                     if (!channel) return;
 
