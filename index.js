@@ -270,6 +270,9 @@ client.on(Events.InteractionCreate, async interaction => {
             }
 
             try {
+                // Track command usage before execution
+                trackCommand(interaction.commandName, interaction.user);
+                
                 await command.execute(interaction);
             } catch (error) {
                 console.error('Error executing command:', error);
