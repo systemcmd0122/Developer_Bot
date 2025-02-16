@@ -23,6 +23,7 @@ module.exports = {
             const TARGET_BOT_IDS = [
                 '411916947773587456',
                 '940658205950885908',
+                '1135864594146005042',
             ];
 
             if (message.author.bot && TARGET_BOT_IDS.includes(message.author.id)) {
