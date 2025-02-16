@@ -284,10 +284,20 @@ client.on(Events.InteractionCreate, async interaction => {
                 }
             }
         }
-        else if (interaction.isButton() && interaction.customId.startsWith('role-')) {
-            const roleManageCommand = client.commands.get('rolemanage');
-            if (roleManageCommand && roleManageCommand.handleRoleButton) {
-                await roleManageCommand.handleRoleButton(interaction);
+        else if (interaction.isButton()) {
+            // フレンドコードボタンハンドラー
+            if (interaction.customId.startsWith('friendcode-')) {
+                const friendCodeCommand = client.commands.get('friendcode');
+                if (friendCodeCommand && friendCodeCommand.handleButton) {
+                    await friendCodeCommand.handleButton(interaction);
+                }
+            }
+            // ロール管理ボタンハンドラー
+            else if (interaction.customId.startsWith('role-')) {
+                const roleManageCommand = client.commands.get('rolemanage');
+                if (roleManageCommand && roleManageCommand.handleRoleButton) {
+                    await roleManageCommand.handleRoleButton(interaction);
+                }
             }
         }
     } catch (error) {
@@ -356,6 +366,17 @@ client.on('reconnecting', () => {
         
         await client.login(process.env.DISCORD_TOKEN);
         console.log(chalk.green('✓ Bot is ready!'));
+
+        // フレンドコードの読み込み
+        try {
+            const friendCodeCommand = client.commands.get('friendcode');
+            if (friendCodeCommand && friendCodeCommand.loadData) {
+                client.friendCodes = friendCodeCommand.loadData(client);
+                console.log(chalk.green('✓ Friend codes loaded successfully'));
+            }
+        } catch (error) {
+            console.error(chalk.red('Error loading friend codes:'), error);
+        }
 
         // Memory usage monitoring
         setInterval(() => {
