@@ -5,6 +5,7 @@ const fs = require('fs').promises;
 const path = require('path');
 
 const SETTINGS_FILE = path.join(__dirname, '..', 'data', 'activitySettings.json');
+const EXCLUDED_ROLE_ID = '1331212375969366056';
 
 async function loadSettings() {
     try {
@@ -28,6 +29,15 @@ module.exports = {
             // ユーザーが不在の場合は処理しない
             if (!newPresence?.user) return;
 
+            // メンバーオブジェクトを取得
+            const member = newPresence.member;
+            if (!member) return;
+
+            // 特定のロールを持つメンバーは通知しない
+            if (member.roles.cache.has(EXCLUDED_ROLE_ID)) {
+                return;
+            }
+
             // ユーザーの通知設定を確認
             const settings = await loadSettings();
             const userSetting = settings[newPresence.user.id];
@@ -43,9 +53,6 @@ module.exports = {
                 try {
                     const channel = await newPresence.client.channels.fetch(GAME_ACTIVITY_CHANNEL_ID);
                     if (!channel) return;
-
-                    const member = newPresence.member;
-                    if (!member) return;
 
                     const gameStartEmbed = new EmbedBuilder()
                         .setColor('#00ff00')
@@ -70,9 +77,6 @@ module.exports = {
                     const channel = await newPresence.client.channels.fetch(GAME_ACTIVITY_CHANNEL_ID);
                     if (!channel) return;
 
-                    const member = newPresence.member;
-                    if (!member) return;
-
                     const gameEndEmbed = new EmbedBuilder()
                         .setColor('#ff0000')
                         .setTitle('🎮 ゲーム終了')
@@ -95,9 +99,6 @@ module.exports = {
                 try {
                     const channel = await newPresence.client.channels.fetch(GAME_ACTIVITY_CHANNEL_ID);
                     if (!channel) return;
-
-                    const member = newPresence.member;
-                    if (!member) return;
 
                     const gameSwitchEmbed = new EmbedBuilder()
                         .setColor('#ffa500')
