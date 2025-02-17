@@ -18,6 +18,8 @@ module.exports = {
                 
                 if (isDeleted) {
                     console.log(chalk.yellow(`Auto-deleted message from ${message.author.username} in #${message.channel.name}`));
+                    
+                    // ここではチャンネルにログを送信しない
                 }
             }
         } catch (error) {

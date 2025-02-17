@@ -9,6 +9,9 @@ let userDeleteList = {};
 // ユーザーメッセージ削除リストのファイルパスを設定
 const savePath = path.join(__dirname, '..', 'data', 'userMessageDeleteList.json');
 
+// 特定の管理者ロールID
+const ADMIN_ROLE_ID = '1331169550728957982';
+
 // ディレクトリが存在しない場合は作成
 function ensureDirExists() {
     const dir = path.dirname(savePath);
@@ -83,6 +86,21 @@ module.exports = {
         ),
 
     async execute(interaction) {
+        // 特定のロールを持っているか確認
+        const hasRequiredRole = interaction.member.roles.cache.has(ADMIN_ROLE_ID);
+        const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.ADMINISTRATOR);
+        
+        // 管理者権限またはADMIN_ROLE_IDを持っていない場合は実行を拒否
+        if (!isAdmin && !hasRequiredRole) {
+            const embed = new EmbedBuilder()
+                .setTitle('⛔ 権限エラー')
+                .setDescription('このコマンドを実行する権限がありません。')
+                .setColor('#FF0000')
+                .setTimestamp();
+            
+            return await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+
         const subcommand = interaction.options.getSubcommand();
 
         if (subcommand === 'start') {
@@ -122,7 +140,7 @@ module.exports = {
                 .setColor('#00FF00')
                 .setTimestamp();
 
-            await interaction.reply({ embeds: [embed] });
+            await interaction.reply({ embeds: [embed], ephemeral: true });
         } else if (subcommand === 'stop') {
             const targetUser = interaction.options.getUser('user');
 
@@ -153,7 +171,7 @@ module.exports = {
                 .setColor('#FF0000')
                 .setTimestamp();
 
-            await interaction.reply({ embeds: [embed] });
+            await interaction.reply({ embeds: [embed], ephemeral: true });
         } else if (subcommand === 'list') {
             const userIds = Object.keys(userDeleteList);
 
@@ -164,7 +182,7 @@ module.exports = {
                     .setColor('#0099FF')
                     .setTimestamp();
 
-                return await interaction.reply({ embeds: [embed] });
+                return await interaction.reply({ embeds: [embed], ephemeral: true });
             }
 
             const userListEntries = userIds.map(userId => {
@@ -179,7 +197,7 @@ module.exports = {
                 .setColor('#0099FF')
                 .setTimestamp();
 
-            await interaction.reply({ embeds: [embed] });
+            await interaction.reply({ embeds: [embed], ephemeral: true });
         }
     },
 
