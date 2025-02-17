@@ -284,12 +284,12 @@ client.on(Events.InteractionCreate, async interaction => {
                 }
             }
         }
-        else if (interaction.isButton()) {
-            // フレンドコードボタンハンドラー
+        else if (interaction.isButton() || interaction.isStringSelectMenu()) {
+            // フレンドコードインタラクションハンドラー
             if (interaction.customId.startsWith('friendcode-')) {
                 const friendCodeCommand = client.commands.get('friendcode');
-                if (friendCodeCommand && friendCodeCommand.handleButton) {
-                    await friendCodeCommand.handleButton(interaction);
+                if (friendCodeCommand && friendCodeCommand.handleInteraction) {
+                    await friendCodeCommand.handleInteraction(interaction);
                 }
             }
             // ロール管理ボタンハンドラー
@@ -298,6 +298,21 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (roleManageCommand && roleManageCommand.handleRoleButton) {
                     await roleManageCommand.handleRoleButton(interaction);
                 }
+            }
+        }
+        else if (interaction.isAutocomplete()) {
+            const command = client.commands.get(interaction.commandName);
+            if (!command) {
+                console.error(`No command matching ${interaction.commandName} was found.`);
+                return;
+            }
+
+            try {
+                if (command.autocomplete) {
+                    await command.autocomplete(interaction);
+                }
+            } catch (error) {
+                console.error('Error handling autocomplete:', error);
             }
         }
     } catch (error) {

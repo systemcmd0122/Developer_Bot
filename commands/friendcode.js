@@ -1,5 +1,5 @@
 // commands/friendcode.js
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -16,6 +16,7 @@ module.exports = {
                         .setName('game')
                         .setDescription('ゲーム名')
                         .setRequired(true)
+                        .setAutocomplete(true)
                 )
                 .addStringOption(option => 
                     option
@@ -39,6 +40,7 @@ module.exports = {
                         .setName('game')
                         .setDescription('削除するゲーム名')
                         .setRequired(true)
+                        .setAutocomplete(true)
                 )
         )
         .addSubcommand(subcommand => 
@@ -86,7 +88,8 @@ module.exports = {
         if (!interaction.client.friendCodes[interaction.guildId]) {
             interaction.client.friendCodes[interaction.guildId] = {
                 users: {},
-                boards: {}
+                boards: {},
+                popularGames: [] // 人気ゲームのリストを追加
             };
         }
 
@@ -112,14 +115,36 @@ module.exports = {
                     updatedAt: new Date().toISOString()
                 };
 
+                // 人気ゲームリストを更新
+                this.updatePopularGames(interaction.client, interaction.guildId);
+
                 // データ永続化
                 await this.saveData(interaction.client);
 
                 // 掲示板の更新
                 await this.updateAllBoards(interaction);
 
+                const embed = new EmbedBuilder()
+                    .setTitle('フレンドコード登録完了')
+                    .setDescription(`${game} のフレンドコードを登録しました！`)
+                    .setColor('#00ff00')
+                    .addFields({
+                        name: 'コード',
+                        value: code,
+                        inline: true
+                    })
+                    .setTimestamp();
+
+                if (note) {
+                    embed.addFields({
+                        name: '備考',
+                        value: note,
+                        inline: true
+                    });
+                }
+
                 return interaction.reply({
-                    content: `${game} のフレンドコードを登録しました！`,
+                    embeds: [embed],
                     ephemeral: true
                 });
             }
@@ -142,6 +167,9 @@ module.exports = {
                 if (Object.keys(guildData.users[userId]).length === 0) {
                     delete guildData.users[userId];
                 }
+
+                // 人気ゲームリストを更新
+                this.updatePopularGames(interaction.client, interaction.guildId);
 
                 // データ永続化
                 await this.saveData(interaction.client);
@@ -269,8 +297,8 @@ module.exports = {
                     .sort((a, b) => b[1] - a[1]); // 登録者数で降順ソート
 
                 for (const [game, count] of sortedGames) {
-                    // ボタンサブコマンドで使用する場合は20個までしか作れないため、最大20個に制限
-                    if (embed.data.fields && embed.data.fields.length >= 20) break;
+                    // 上限があるので最大25個に制限
+                    if (embed.data.fields && embed.data.fields.length >= 25) break;
 
                     embed.addFields({
                         name: game,
@@ -279,12 +307,19 @@ module.exports = {
                     });
                 }
 
+                // ゲーム選択用のセレクトメニューを作成
+                const gameOptions = sortedGames.slice(0, 25).map(([game, count]) => ({
+                    label: game,
+                    description: `登録者数: ${count}人`,
+                    value: game,
+                }));
+
                 const row = new ActionRowBuilder()
                     .addComponents(
-                        new ButtonBuilder()
-                            .setCustomId('friendcode-show-users')
-                            .setLabel('登録者を表示')
-                            .setStyle(ButtonStyle.Primary),
+                        new StringSelectMenuBuilder()
+                            .setCustomId('friendcode-select-game')
+                            .setPlaceholder('ゲームを選択して登録者を表示')
+                            .addOptions(gameOptions)
                     );
 
                 return interaction.reply({
@@ -373,11 +408,41 @@ module.exports = {
         
         try {
             const data = fs.readFileSync(filePath, 'utf8');
-            return JSON.parse(data);
+            const parsedData = JSON.parse(data);
+            
+            // 各サーバーごとに人気ゲームリストを更新
+            for (const guildId in parsedData) {
+                this.updatePopularGames(client, guildId);
+            }
+            
+            return parsedData;
         } catch (err) {
             console.error('フレンドコードの読み込み中にエラーが発生しました:', err);
             return {};
         }
+    },
+
+    // 人気ゲームリストを更新するヘルパーメソッド
+    updatePopularGames(client, guildId) {
+        if (!client.friendCodes[guildId]) return;
+        
+        const guildData = client.friendCodes[guildId];
+        const games = new Map();
+        
+        // ゲームの登録者数を集計
+        for (const userId in guildData.users) {
+            for (const game in guildData.users[userId]) {
+                games.set(game, (games.get(game) || 0) + 1);
+            }
+        }
+        
+        // 登録者数で降順ソートして、上位10件を保存
+        const popularGames = [...games.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
+            .map(([game]) => game);
+        
+        guildData.popularGames = popularGames;
     },
 
     // 掲示板更新用のヘルパーメソッド
@@ -418,22 +483,24 @@ module.exports = {
             const embed = EmbedBuilder.from(message.embeds[0]);
             embed.setDescription(board.description);
             
-            // ボタンコンポーネントを構築（5個ずつ、最大25個まで）
-            const components = [];
+            // セレクトメニューを使って表示（最大25個まで）
             const sortedGames = [...games].sort();
+            const components = [];
             
-            for (let i = 0; i < Math.min(sortedGames.length, 25); i += 5) {
-                const row = new ActionRowBuilder();
-                const groupGames = sortedGames.slice(i, i + 5);
+            // 25個までしか選択肢を表示できないので、分割する
+            for (let i = 0; i < Math.min(sortedGames.length, 25); i += 25) {
+                const gameOptions = sortedGames.slice(i, i + 25).map(game => ({
+                    label: game,
+                    value: game,
+                }));
                 
-                for (const game of groupGames) {
-                    const button = new ButtonBuilder()
-                        .setCustomId(`friendcode-game-${game}`)
-                        .setLabel(game)
-                        .setStyle(ButtonStyle.Primary);
-                    
-                    row.addComponents(button);
-                }
+                const row = new ActionRowBuilder()
+                    .addComponents(
+                        new StringSelectMenuBuilder()
+                            .setCustomId(`friendcode-board-${messageId}`)
+                            .setPlaceholder('ゲームを選択して登録者を表示')
+                            .addOptions(gameOptions)
+                    );
                 
                 components.push(row);
             }
@@ -462,61 +529,55 @@ module.exports = {
         }
     },
 
-    // ボタンハンドラー
-    async handleButton(interaction) {
-        if (!interaction.isButton()) return;
-        
-        const customId = interaction.customId;
-        
-        // フレンドコード関連のボタンか確認
-        if (!customId.startsWith('friendcode-')) return;
-        
-        const guildData = interaction.client.friendCodes[interaction.guildId];
-        
-        // 「すべて削除」ボタン
-        if (customId === 'friendcode-delete-all') {
-            if (guildData.users[interaction.user.id]) {
-                delete guildData.users[interaction.user.id];
-                await this.saveData(interaction.client);
-                await this.updateAllBoards(interaction);
-                
-                await interaction.reply({
-                    content: 'すべてのフレンドコードを削除しました。',
-                    ephemeral: true
-                });
-            } else {
-                await interaction.reply({
-                    content: '登録されているフレンドコードがありません。',
-                    ephemeral: true
-                });
+    // ボタン・セレクトメニューハンドラー
+    async handleInteraction(interaction) {
+        // ボタンのハンドリング
+        if (interaction.isButton()) {
+            const customId = interaction.customId;
+            
+            // フレンドコード関連のボタンか確認
+            if (!customId.startsWith('friendcode-')) return;
+            
+            const guildData = interaction.client.friendCodes[interaction.guildId];
+            
+            // 「すべて削除」ボタン
+            if (customId === 'friendcode-delete-all') {
+                if (guildData.users[interaction.user.id]) {
+                    delete guildData.users[interaction.user.id];
+                    await this.saveData(interaction.client);
+                    await this.updateAllBoards(interaction);
+                    
+                    await interaction.reply({
+                        content: 'すべてのフレンドコードを削除しました。',
+                        ephemeral: true
+                    });
+                } else {
+                    await interaction.reply({
+                        content: '登録されているフレンドコードがありません。',
+                        ephemeral: true
+                    });
+                }
+                return;
             }
-            return;
         }
         
-        // 「登録者を表示」ボタン
-        if (customId === 'friendcode-show-users') {
-            const gameIndex = interaction.message.embeds[0].fields.findIndex(
-                field => field.name === interaction.values?.[0]
-            );
+        // セレクトメニューのハンドリング
+        if (interaction.isStringSelectMenu()) {
+            const customId = interaction.customId;
             
-            if (gameIndex === -1) {
-                await interaction.reply({
-                    content: 'ゲームが見つかりません。',
-                    ephemeral: true
-                });
+            // ゲーム選択メニュー
+            if (customId === 'friendcode-select-game') {
+                const gameName = interaction.values[0];
+                await this.showGameUsers(interaction, gameName);
                 return;
             }
             
-            const gameName = interaction.message.embeds[0].fields[gameIndex].name;
-            await this.showGameUsers(interaction, gameName);
-            return;
-        }
-        
-        // ゲームボタン
-        if (customId.startsWith('friendcode-game-')) {
-            const gameName = customId.replace('friendcode-game-', '');
-            await this.showGameUsers(interaction, gameName);
-            return;
+            // 掲示板のセレクトメニュー
+            if (customId.startsWith('friendcode-board-')) {
+                const gameName = interaction.values[0];
+                await this.showGameUsers(interaction, gameName);
+                return;
+            }
         }
     },
 
@@ -577,5 +638,52 @@ module.exports = {
             embeds: [embed],
             ephemeral: false
         });
+    },
+
+    // オートコンプリート処理
+    async autocomplete(interaction) {
+        if (!interaction.isAutocomplete()) return;
+        
+        const focusedOption = interaction.options.getFocused(true);
+        if (focusedOption.name !== 'game') return;
+        
+        const guildData = interaction.client.friendCodes[interaction.guildId] || {};
+        const input = focusedOption.value.toLowerCase();
+        let choices = [];
+        
+        // 自分が登録したゲームのリスト
+        const userGames = guildData.users?.[interaction.user.id] || {};
+        
+        if (interaction.options.getSubcommand() === 'remove') {
+            // 削除の場合は自分が登録したゲームだけを表示
+            choices = Object.keys(userGames);
+        } else {
+            // 追加の場合は既存の人気ゲームリストを表示
+            choices = guildData.popularGames || [];
+            
+            // サーバー内の全ゲームも含める
+            const allGames = new Set(choices);
+            
+            for (const userId in guildData.users || {}) {
+                for (const game in guildData.users[userId] || {}) {
+                    allGames.add(game);
+                }
+            }
+            
+            choices = [...allGames];
+        }
+        
+        // 入力文字列でフィルタリング
+        const filtered = input
+            ? choices.filter(game => game.toLowerCase().includes(input))
+            : choices;
+        
+        // 最大25個まで
+        await interaction.respond(
+            filtered.slice(0, 25).map(game => ({
+                name: game,
+                value: game
+            }))
+        );
     }
 };
