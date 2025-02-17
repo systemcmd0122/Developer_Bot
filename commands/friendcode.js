@@ -196,11 +196,12 @@ module.exports = {
 
                 const embed = new EmbedBuilder()
                     .setTitle(`${interaction.user.username} のフレンドコード一覧`)
+                    .setDescription(`<@${interaction.user.id}>`)
                     .setColor('#00ff00')
                     .setThumbnail(interaction.user.displayAvatarURL())
                     .setTimestamp();
 
-                // ゲームごとにフィールドを追加
+                // ゲームごとにフィールドを追加（縦一列に並べる）
                 for (const [game, data] of Object.entries(userCodes)) {
                     let value = `コード: ${data.code}`;
                     if (data.note) {
@@ -211,7 +212,7 @@ module.exports = {
                     embed.addFields({
                         name: game,
                         value: value,
-                        inline: true
+                        inline: false // 縦一列に表示するためfalseに変更
                     });
                 }
 
@@ -226,7 +227,7 @@ module.exports = {
                 return interaction.reply({
                     embeds: [embed],
                     components: [row],
-                    ephemeral: false
+                    ephemeral: true // ユーザーだけに表示
                 });
             }
 
@@ -243,11 +244,12 @@ module.exports = {
 
                 const embed = new EmbedBuilder()
                     .setTitle(`${targetUser.username} のフレンドコード一覧`)
+                    .setDescription(`<@${targetUser.id}>`) // メンションを追加
                     .setColor('#0099ff')
                     .setThumbnail(targetUser.displayAvatarURL())
                     .setTimestamp();
 
-                // ゲームごとにフィールドを追加
+                // ゲームごとにフィールドを追加（縦一列に並べる）
                 for (const [game, data] of Object.entries(userCodes)) {
                     let value = `コード: ${data.code}`;
                     if (data.note) {
@@ -258,13 +260,13 @@ module.exports = {
                     embed.addFields({
                         name: game,
                         value: value,
-                        inline: true
+                        inline: false // 縦一列に表示するためfalseに変更
                     });
                 }
 
                 return interaction.reply({
                     embeds: [embed],
-                    ephemeral: false
+                    ephemeral: true // ユーザーだけに表示
                 });
             }
 
@@ -292,7 +294,7 @@ module.exports = {
                     .setColor('#ff9900')
                     .setTimestamp();
 
-                // ゲーム名と登録者数をフィールドに追加
+                // ゲーム名と登録者数をフィールドに追加（縦一列に並べる）
                 const sortedGames = [...games.entries()]
                     .sort((a, b) => b[1] - a[1]); // 登録者数で降順ソート
 
@@ -303,7 +305,7 @@ module.exports = {
                     embed.addFields({
                         name: game,
                         value: `登録者数: ${count}人`,
-                        inline: true
+                        inline: false // 縦一列に表示するためfalseに変更
                     });
                 }
 
@@ -325,7 +327,7 @@ module.exports = {
                 return interaction.reply({
                     embeds: [embed],
                     components: [row],
-                    ephemeral: false
+                    ephemeral: true // ユーザーだけに表示
                 });
             }
 
@@ -609,34 +611,38 @@ module.exports = {
             .setColor('#ff00ff')
             .setTimestamp();
         
-        // ユーザーごとにフィールドを追加
+        // ユーザーごとにフィールドを追加（縦一列に並べる、メンションとアイコン付き）
         for (const user of usersWithGame) {
             try {
                 const member = await interaction.guild.members.fetch(user.userId);
-                let value = `コード: ${user.data.code}`;
+                let value = `<@${user.userId}>\nコード: ${user.data.code}`;
                 if (user.data.note) {
                     value += `\n備考: ${user.data.note}`;
                 }
                 
+                // ユーザー名とアイコンを含むフィールド
                 embed.addFields({
                     name: member.user.username,
                     value: value,
-                    inline: true
+                    inline: false // 縦一列に表示するためfalseに変更
                 });
+                
+                // アバターを設定（一番最後に更新されたユーザーのアバターが表示される）
+                embed.setThumbnail(member.user.displayAvatarURL());
             } catch (error) {
                 console.error(`ユーザー情報取得エラー (ID: ${user.userId}):`, error);
                 // エラーの場合でもIDだけは表示
                 embed.addFields({
                     name: `不明なユーザー (ID: ${user.userId})`,
-                    value: `コード: ${user.data.code}`,
-                    inline: true
+                    value: `<@${user.userId}>\nコード: ${user.data.code}`,
+                    inline: false // 縦一列に表示するためfalseに変更
                 });
             }
         }
         
         await interaction.reply({
             embeds: [embed],
-            ephemeral: false
+            ephemeral: true // ユーザーだけに表示
         });
     },
 
