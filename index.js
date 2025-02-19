@@ -11,6 +11,23 @@ const BOT_VERSION = '1.1.0';
 const PORT = process.env.PORT || 8000;
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
+// JSONファイルを読み込む関数
+function loadJsonFiles() {
+    const jsonFiles = {};
+    try {
+        // 各JSONファイルを読み込む
+        const activitySettingsPath = path.join(__dirname, 'activitySettings.json');
+        if (fs.existsSync(activitySettingsPath)) {
+            jsonFiles.activitySettings = JSON.parse(fs.readFileSync(activitySettingsPath, 'utf8'));
+        }
+        
+        return jsonFiles;
+    } catch (error) {
+        console.error('Error loading JSON files:', error);
+        return {};
+    }
+}
+
 // Express app setup with HTTPS
 const app = express();
 app.use(express.static('public'));
@@ -115,7 +132,7 @@ function getMetrics() {
                 arch: os.arch(),
                 nodejs: process.version
             },
-            commands: commandStats // Add command statistics to metrics
+            commands: commandStats
         };
     } catch (error) {
         console.error('Error getting metrics:', error);
@@ -130,6 +147,17 @@ app.get('/', (req, res) => {
     } catch (error) {
         console.error('Error serving dashboard:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// JSONファイルを提供するエンドポイントを追加
+app.get('/data/json-files', (req, res) => {
+    try {
+        const jsonFiles = loadJsonFiles();
+        res.json(jsonFiles);
+    } catch (error) {
+        console.error('Error serving JSON files:', error);
+        res.status(500).json({ error: 'Failed to load JSON files' });
     }
 });
 
@@ -368,6 +396,10 @@ client.on('reconnecting', () => {
         
         loadEvents();
 
+        // Load JSON files on startup
+        const jsonFiles = loadJsonFiles();
+        console.log(chalk.green('✓ JSON files loaded successfully'));
+
         // Start Express server with enhanced error handling
         const server = app.listen(PORT, () => {
             console.log(chalk.green(`✓ Metrics server running on port ${PORT}`));
@@ -422,3 +454,6 @@ async function gracefulShutdown() {
 
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
+
+// Export the app for testing purposes
+module.exports = { app, client };
