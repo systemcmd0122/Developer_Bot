@@ -43,6 +43,16 @@
             background-color: rgba(255, 255, 255, 0.2);
             border-radius: 3px;
         }
+        .json-content {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .file-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex flex-col">
@@ -120,8 +130,11 @@
                     </button>
                 </div>
                 <div id="json-content" class="hidden">
+                    <div class="file-list space-y-2 mb-4">
+                        <!-- File list will be populated here -->
+                    </div>
                     <div class="bg-gray-800 p-4 rounded-lg">
-                        <pre class="text-sm text-gray-300 overflow-x-auto"></pre>
+                        <pre class="json-content text-sm text-gray-300"></pre>
                     </div>
                 </div>
             </div>
@@ -323,7 +336,9 @@
             }
         }
 
-        // JSON表示機能
+        // JSONファイル表示機能
+        let currentJsonFiles = null;
+
         async function checkPassword() {
             const password = document.getElementById('json-password').value;
             if (password === 'test') {
@@ -331,23 +346,50 @@
                     const response = await fetch('/data/json-files');
                     if (!response.ok) throw new Error('Failed to fetch JSON files');
                     const data = await response.json();
+                    currentJsonFiles = data.files;
                     
-                    const jsonContent = document.getElementById('json-content');
-                    const pre = jsonContent.querySelector('pre');
-                    
-                    // JSONデータを整形して表示
-                    const formattedData = JSON.stringify(data, null, 2);
-                    pre.textContent = formattedData;
+                    // ファイル一覧の表示
+                    const fileList = document.querySelector('.file-list');
+                    fileList.innerHTML = currentJsonFiles.map(file => `
+                        <button onclick="displayJsonContent('${file.name}')" 
+                                class="w-full text-left px-4 py-2 rounded bg-gray-700 hover:bg-gray-600 transition-colors">
+                            ${file.name}.json
+                        </button>
+                    `).join('');
                     
                     // パスワードセクションを隠してJSONコンテンツを表示
                     document.getElementById('password-section').classList.add('hidden');
-                    jsonContent.classList.remove('hidden');
+                    document.getElementById('json-content').classList.remove('hidden');
+                    
+                    // 最初のファイルの内容を表示
+                    if (currentJsonFiles.length > 0) {
+                        displayJsonContent(currentJsonFiles[0].name);
+                    }
                 } catch (error) {
                     alert('JSONファイルの取得に失敗しました。');
                     console.error('Error fetching JSON files:', error);
                 }
             } else {
                 alert('パスワードが正しくありません。');
+            }
+        }
+
+        function displayJsonContent(fileName) {
+            const file = currentJsonFiles.find(f => f.name === fileName);
+            if (file) {
+                const pre = document.querySelector('#json-content pre');
+                pre.textContent = JSON.stringify(file.content, null, 2);
+                
+                // 選択されたファイルボタンをハイライト
+                document.querySelectorAll('.file-list button').forEach(btn => {
+                    if (btn.textContent.trim() === `${fileName}.json`) {
+                        btn.classList.add('bg-discord-blurple');
+                        btn.classList.remove('bg-gray-700');
+                    } else {
+                        btn.classList.remove('bg-discord-blurple');
+                        btn.classList.add('bg-gray-700');
+                    }
+                });
             }
         }
 
