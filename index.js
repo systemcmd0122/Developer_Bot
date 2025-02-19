@@ -11,16 +11,28 @@ const BOT_VERSION = '1.1.0';
 const PORT = process.env.PORT || 8000;
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-// JSONファイルを読み込む関数
+// JSONファイルを動的に読み込む関数
 function loadJsonFiles() {
     const jsonFiles = {};
     try {
-        // 各JSONファイルを読み込む
-        const activitySettingsPath = path.join(__dirname, 'activitySettings.json');
-        if (fs.existsSync(activitySettingsPath)) {
-            jsonFiles.activitySettings = JSON.parse(fs.readFileSync(activitySettingsPath, 'utf8'));
+        const dataPath = path.join(__dirname, 'data');
+        
+        // dataディレクトリが存在しない場合は作成
+        if (!fs.existsSync(dataPath)) {
+            fs.mkdirSync(dataPath);
+        }
+
+        // dataディレクトリ内のすべてのJSONファイルを読み込む
+        const files = fs.readdirSync(dataPath).filter(file => file.endsWith('.json'));
+        
+        for (const file of files) {
+            const filePath = path.join(dataPath, file);
+            const fileContent = fs.readFileSync(filePath, 'utf8');
+            const fileName = path.basename(file, '.json');
+            jsonFiles[fileName] = JSON.parse(fileContent);
         }
         
+        console.log(chalk.green(`✓ Loaded ${files.length} JSON files from data directory`));
         return jsonFiles;
     } catch (error) {
         console.error('Error loading JSON files:', error);
@@ -150,14 +162,50 @@ app.get('/', (req, res) => {
     }
 });
 
-// JSONファイルを提供するエンドポイントを追加
+// JSONファイルの一覧を取得するエンドポイント
 app.get('/data/json-files', (req, res) => {
     try {
-        const jsonFiles = loadJsonFiles();
-        res.json(jsonFiles);
+        const dataPath = path.join(__dirname, 'data');
+        if (!fs.existsSync(dataPath)) {
+            return res.json({ files: [] });
+        }
+
+        const files = fs.readdirSync(dataPath)
+            .filter(file => file.endsWith('.json'))
+            .map(file => {
+                const filePath = path.join(dataPath, file);
+                const stats = fs.statSync(filePath);
+                return {
+                    name: path.basename(file, '.json'),
+                    size: stats.size,
+                    lastModified: stats.mtime,
+                    content: JSON.parse(fs.readFileSync(filePath, 'utf8'))
+                };
+            });
+
+        res.json({ files });
     } catch (error) {
-        console.error('Error serving JSON files:', error);
-        res.status(500).json({ error: 'Failed to load JSON files' });
+        console.error('Error listing JSON files:', error);
+        res.status(500).json({ error: 'Failed to list JSON files' });
+    }
+});
+
+// 個別のJSONファイルを取得するエンドポイント
+app.get('/data/json/:filename', (req, res) => {
+    try {
+        const filename = req.params.filename;
+        const filePath = path.join(__dirname, 'data', `${filename}.json`);
+
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+
+        const fileContent = fs.readFileSync(filePath, 'utf8');
+        const jsonContent = JSON.parse(fileContent);
+        res.json(jsonContent);
+    } catch (error) {
+        console.error(`Error serving JSON file ${req.params.filename}:`, error);
+        res.status(500).json({ error: 'Failed to load JSON file' });
     }
 });
 
@@ -186,6 +234,22 @@ app.get('/health', (req, res) => {
     } catch (error) {
         console.error('Error checking health:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// JSONファイルの更新を監視する機能
+let jsonCache = {};
+const jsonWatcher = fs.watch(path.join(__dirname, 'data'), (eventType, filename) => {
+    if (filename && filename.endsWith('.json')) {
+        const filePath = path.join(__dirname, 'data', filename);
+        try {
+            const content = fs.readFileSync(filePath, 'utf8');
+            const fileName = path.basename(filename, '.json');
+            jsonCache[fileName] = JSON.parse(content);
+            console.log(chalk.blue(`✓ Updated JSON cache for ${filename}`));
+        } catch (error) {
+            console.error(`Error updating JSON cache for ${filename}:`, error);
+        }
     }
 });
 
