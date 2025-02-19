@@ -46,7 +46,7 @@
     </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex flex-col">
-    <!-- Previous navigation code remains the same -->
+    <!-- Navigation -->
     <nav class="bg-discord-dark shadow-lg sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
@@ -54,7 +54,7 @@
                     <div class="flex-shrink-0">
                         <span class="text-2xl font-bold text-discord-blurple flex items-center">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.644 12.644 0 0 0-.61-1.25.077.077 0 0 0-.078-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0 .032.027c.677.332 1.334.732 1.964 1.189a.076.076 0 0 0 .084.01C7.88 4.784 9.455 4.354 12 4.354s4.12.43 5.243 1.182a.076.076 0 0 0 .084-.01c.63-.457 1.287-.857 1.964-1.189a.07.07 0 0 0 .032-.027zM8.52 14.902c-1.252 0-2.282-1.15-2.282-2.556 0-1.406 1.013-2.556 2.282-2.556 1.278 0 2.298 1.15 2.282 2.556 0 1.406-1.013 2.556-2.282 2.556zm6.955 0c-1.252 0-2.282-1.15-2.282-2.556 0-1.406 1.013-2.556 2.282-2.556 1.278 0 2.298 1.15 2.282 2.556 0 1.406-1.013 2.556-2.282 2.556z"/>
+                                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.644 12.644 0 0 0-.61-1.25.077.077 0 0 0-.078-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0 .032.027c.677.332 1.334.732 1.964 1.189a.076.076 0 0 0 .084.01C7.88 4.784 9.455 4.354 12 4.354s4.12.43 5.243 1.182a.076.076 0 0 0 .084-.01c.63-.457 1.287-.857 1.964-1.189a.07.07 0 0 0 .032-.027z"/>
                             </svg>
                             Bot Dashboard
                         </span>
@@ -74,10 +74,9 @@
     <!-- Main Content -->
     <main class="flex-grow container mx-auto px-4 py-8 space-y-8">
         <!-- System Cards Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <!-- Previous cards remain the same -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- System Information Card -->
-            <div class="bg-discord-dark rounded-xl shadow-lg p-6 space-y-4 transform transition hover:scale-105 hover:shadow-xl">
+            <div class="bg-discord-dark rounded-xl shadow-lg p-6 space-y-4">
                 <div class="flex justify-between items-center">
                     <h3 class="text-xl font-semibold text-discord-blurple">システム情報</h3>
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -106,78 +105,24 @@
                 </div>
             </div>
 
-            <!-- Bot Statistics Card -->
-            <div class="bg-discord-dark rounded-xl shadow-lg p-6 space-y-4 transform transition hover:scale-105 hover:shadow-xl">
-                <div class="flex justify-between items-center">
-                    <h3 class="text-xl font-semibold text-discord-blurple">ボット統計</h3>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-                    </svg>
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="bg-gray-800 rounded-lg p-3 text-center">
-                        <div class="text-sm text-gray-400">サーバー数</div>
-                        <div id="guild-count" class="text-2xl font-bold text-white">0</div>
-                    </div>
-                    <div class="bg-gray-800 rounded-lg p-3 text-center">
-                        <div class="text-sm text-gray-400">ユーザー数</div>
-                        <div id="user-count" class="text-2xl font-bold text-white">0</div>
-                    </div>
-                    <div class="bg-gray-800 rounded-lg p-3 text-center">
-                        <div class="text-sm text-gray-400">コマンド数</div>
-                        <div id="command-count" class="text-2xl font-bold text-white">0</div>
-                    </div>
-                    <div class="bg-gray-800 rounded-lg p-3 text-center">
-                        <div class="text-sm text-gray-400">バージョン</div>
-                        <div id="version" class="text-2xl font-bold text-white">-</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Uptime Card -->
-            <div class="bg-discord-dark rounded-xl shadow-lg p-6 space-y-4 transform transition hover:scale-105 hover:shadow-xl">
-                <div class="flex justify-between items-center">
-                    <h3 class="text-xl font-semibold text-discord-blurple">稼働時間</h3>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                </div>
-                <div class="text-center">
-                    <div id="uptime" class="text-4xl font-mono text-white font-bold tracking-tight">0d 0h 0m 0s</div>
-                    <div class="mt-2 text-sm text-gray-400">
-                        起動日時: <span id="start-time">-</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- New Command Usage Section -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <!-- Command Usage Chart -->
+            <!-- JSON Files Viewer Card -->
             <div class="bg-discord-dark rounded-xl shadow-lg p-6 space-y-4">
-                <div class="flex justify-between items-center">
-                    <h3 class="text-xl font-semibold text-discord-blurple">コマンド使用状況</h3>
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-semibold text-discord-blurple">JSONファイル閲覧</h3>
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                     </svg>
                 </div>
-                <div class="relative h-96">
-                    <canvas id="commandUsageChart"></canvas>
+                <div id="password-section">
+                    <input type="password" id="json-password" placeholder="パスワードを入力" class="w-full p-2 rounded bg-gray-800 text-white mb-2">
+                    <button onclick="checkPassword()" class="w-full bg-discord-blurple hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
+                        表示
+                    </button>
                 </div>
-            </div>
-
-            <!-- Recent Commands List -->
-            <div class="bg-discord-dark rounded-xl shadow-lg p-6 space-y-4">
-                <div class="flex justify-between items-center">
-                    <h3 class="text-xl font-semibold text-discord-blurple">最近のコマンド実行</h3>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                </div>
-                <div class="command-list">
-                    <ul id="recent-commands" class="space-y-2">
-                        <!-- Commands will be inserted here dynamically -->
-                    </ul>
+                <div id="json-content" class="hidden">
+                    <div class="bg-gray-800 p-4 rounded-lg">
+                        <pre class="text-sm text-gray-300 overflow-x-auto"></pre>
+                    </div>
                 </div>
             </div>
         </div>
@@ -209,18 +154,14 @@
                 this.memoryData = [];
                 this.labels = [];
                 this.chart = null;
-                this.commandUsageChart = null;
                 this.lastUpdate = null;
                 this.offlineTimeout = null;
-                this.commandUsageData = new Map();
-                this.recentCommands = [];
                 
                 this.initCharts();
                 this.startUpdates();
             }
 
             initCharts() {
-                // Resource usage chart initialization
                 const ctx = document.getElementById('resourceChart').getContext('2d');
                 const gradient1 = ctx.createLinearGradient(0, 0, 0, 400);
                 gradient1.addColorStop(0, 'rgba(59, 130, 246, 0.5)');
@@ -305,130 +246,18 @@
                         }
                     }
                 });
-
-                // Command usage chart initialization
-                const commandCtx = document.getElementById('commandUsageChart').getContext('2d');
-                this.commandUsageChart = new Chart(commandCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: [],
-                        datasets: [{
-                            label: 'コマンド使用回数',
-                            data: [],
-                            backgroundColor: 'rgba(88, 101, 242, 0.8)',
-                            borderColor: 'rgb(88, 101, 242)',
-                            borderWidth: 1
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                grid: {
-                                    color: 'rgba(255, 255, 255, 0.1)'
-                                },
-                                ticks: {
-                                    color: 'rgba(255, 255, 255, 0.7)',
-                                    stepSize: 1
-                                }
-                            },
-                            x: {
-                                grid: {
-                                    color: 'rgba(255, 255, 255, 0.1)'
-                                },
-                                ticks: {
-                                    color: 'rgba(255, 255, 255, 0.7)',
-                                    maxRotation: 45
-                                }
-                            }
-                        },
-                        plugins: {
-                            legend: {
-                                labels: {
-                                    color: 'rgba(255, 255, 255, 0.7)'
-                                }
-                            }
-                        }
-                    }
-                });
-            }
-
-            updateCommandUsage(commandData) {
-                // Update command usage data
-                for (const [command, count] of Object.entries(commandData.usage)) {
-                    this.commandUsageData.set(command, count);
-                }
-
-                // Update recent commands list
-                if (commandData.recent && commandData.recent.length > 0) {
-                    this.recentCommands = commandData.recent;
-                    this.updateRecentCommandsList();
-                }
-
-                // Update command usage chart
-                const sortedCommands = Array.from(this.commandUsageData.entries())
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 10);
-
-                this.commandUsageChart.data.labels = sortedCommands.map(([command]) => command);
-                this.commandUsageChart.data.datasets[0].data = sortedCommands.map(([_, count]) => count);
-                this.commandUsageChart.update();
-            }
-
-            updateRecentCommandsList() {
-                const recentCommandsList = document.getElementById('recent-commands');
-                recentCommandsList.innerHTML = '';
-
-                this.recentCommands.forEach(cmd => {
-                    const li = document.createElement('li');
-                    li.className = 'bg-gray-800 rounded-lg p-3 flex justify-between items-center';
-                    li.innerHTML = `
-                        <div class="flex items-center space-x-3">
-                            <span class="text-discord-blurple font-semibold">/${cmd.command}</span>
-                            <span class="text-gray-400 text-sm">${cmd.user}</span>
-                        </div>
-                        <span class="text-gray-400 text-sm">${new Date(cmd.timestamp).toLocaleTimeString()}</span>
-                    `;
-                    recentCommandsList.appendChild(li);
-                });
             }
 
             updateData(metrics) {
-                // Store start time on first update
-                if (!document.getElementById('start-time').textContent.trim()) {
-                    const startDate = new Date(Date.now() - (metrics.uptime.days * 86400 + 
-                                                            metrics.uptime.hours * 3600 + 
-                                                            metrics.uptime.minutes * 60 + 
-                                                            metrics.uptime.seconds) * 1000);
-                    document.getElementById('start-time').textContent = startDate.toLocaleString();
-                }
-
                 this.lastUpdate = Date.now();
                 clearTimeout(this.offlineTimeout);
 
-                // Update metrics displays
                 document.getElementById('cpu-usage').textContent = `${metrics.cpu}%`;
                 document.getElementById('cpu-bar').style.width = `${metrics.cpu}%`;
                 document.getElementById('memory-usage').textContent = `${metrics.memory.heapUsed} MB`;
                 document.getElementById('memory-bar').style.width = 
                     `${(metrics.memory.heapUsed / metrics.memory.heapTotal * 100)}%`;
 
-                document.getElementById('guild-count').textContent = metrics.bot.guilds;
-                document.getElementById('user-count').textContent = metrics.bot.users;
-                document.getElementById('command-count').textContent = metrics.bot.commands;
-                document.getElementById('version').textContent = metrics.bot.version;
-
-                document.getElementById('uptime').textContent = 
-                    `${metrics.uptime.days}d ${metrics.uptime.hours}h ${metrics.uptime.minutes}m ${metrics.uptime.seconds}s`;
-
-                // Update command usage if available
-                if (metrics.commands) {
-                    this.updateCommandUsage(metrics.commands);
-                }
-
-                // Update graph data
                 const now = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                 
                 this.labels.push(now);
@@ -489,13 +318,45 @@
             }
 
             startUpdates() {
-                // Initial fetch
                 this.fetchMetrics();
-                
-                // Set up periodic updates
                 setInterval(() => this.fetchMetrics(), 1000);
             }
         }
+
+        // JSON表示機能
+        async function checkPassword() {
+            const password = document.getElementById('json-password').value;
+            if (password === 'test') {
+                try {
+                    const response = await fetch('/data/json-files');
+                    if (!response.ok) throw new Error('Failed to fetch JSON files');
+                    const data = await response.json();
+                    
+                    const jsonContent = document.getElementById('json-content');
+                    const pre = jsonContent.querySelector('pre');
+                    
+                    // JSONデータを整形して表示
+                    const formattedData = JSON.stringify(data, null, 2);
+                    pre.textContent = formattedData;
+                    
+                    // パスワードセクションを隠してJSONコンテンツを表示
+                    document.getElementById('password-section').classList.add('hidden');
+                    jsonContent.classList.remove('hidden');
+                } catch (error) {
+                    alert('JSONファイルの取得に失敗しました。');
+                    console.error('Error fetching JSON files:', error);
+                }
+            } else {
+                alert('パスワードが正しくありません。');
+            }
+        }
+
+        // パスワード入力欄でEnterキーを押した時の処理
+        document.getElementById('json-password').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                checkPassword();
+            }
+        });
 
         // Initialize the metrics manager when the page loads
         document.addEventListener('DOMContentLoaded', () => {
