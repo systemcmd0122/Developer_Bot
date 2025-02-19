@@ -7,6 +7,12 @@ const path = require('path');
 const SETTINGS_FILE = path.join(__dirname, '..', 'data', 'activitySettings.json');
 const EXCLUDED_ROLE_ID = '1331212375969366056';
 
+// 通知の最小間隔（ミリ秒）
+const NOTIFICATION_COOLDOWN = 5000;
+
+// 最後の通知時刻を追跡するMap
+const lastNotificationMap = new Map();
+
 async function loadSettings() {
     try {
         const data = await fs.readFile(SETTINGS_FILE, 'utf8');
@@ -17,6 +23,20 @@ async function loadSettings() {
         }
         throw error;
     }
+}
+
+// 通知のクールダウンをチェックする関数
+function checkNotificationCooldown(userId, activityType) {
+    const key = `${userId}-${activityType}`;
+    const lastNotification = lastNotificationMap.get(key) || 0;
+    const currentTime = Date.now();
+
+    if (currentTime - lastNotification < NOTIFICATION_COOLDOWN) {
+        return false;
+    }
+
+    lastNotificationMap.set(key, currentTime);
+    return true;
 }
 
 module.exports = {
@@ -50,6 +70,8 @@ module.exports = {
 
             // ゲーム開始時の処理
             if (!oldGame && newGame) {
+                if (!checkNotificationCooldown(newPresence.user.id, 'start')) return;
+
                 try {
                     const channel = await newPresence.client.channels.fetch(GAME_ACTIVITY_CHANNEL_ID);
                     if (!channel) return;
@@ -73,6 +95,8 @@ module.exports = {
             }
             // ゲーム終了時の処理
             else if (oldGame && !newGame) {
+                if (!checkNotificationCooldown(newPresence.user.id, 'end')) return;
+
                 try {
                     const channel = await newPresence.client.channels.fetch(GAME_ACTIVITY_CHANNEL_ID);
                     if (!channel) return;
@@ -96,6 +120,8 @@ module.exports = {
             }
             // ゲーム切り替え時の処理
             else if (oldGame && newGame && oldGame.name !== newGame.name) {
+                if (!checkNotificationCooldown(newPresence.user.id, 'switch')) return;
+
                 try {
                     const channel = await newPresence.client.channels.fetch(GAME_ACTIVITY_CHANNEL_ID);
                     if (!channel) return;
