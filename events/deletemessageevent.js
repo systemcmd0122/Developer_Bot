@@ -21,7 +21,6 @@ module.exports = {
 
             // 特定のボットのメッセージの処理（20秒後に削除）
             const TARGET_BOT_IDS = [
-                '1331058087729303595', //Developer Bot
                 '411916947773587456', //Jockie Music
                 '916300992612540467', //VOICEVOX読み上げbot
             ];
