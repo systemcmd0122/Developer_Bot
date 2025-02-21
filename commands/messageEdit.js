@@ -47,6 +47,7 @@ function loadData() {
 loadData();
 
 module.exports = {
+    category: 'メッセージ管理',
     data: new SlashCommandBuilder()
         .setName('messageedit')
         .setDescription('ユーザーメッセージの自動削除を管理します')

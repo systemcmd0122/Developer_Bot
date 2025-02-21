@@ -2,6 +2,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
+    category: 'ロール管理',
     data: new SlashCommandBuilder()
         .setName('rolemanage')
         .setDescription('サーバーのロール管理を高度にサポート')

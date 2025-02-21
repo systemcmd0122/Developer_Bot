@@ -3,6 +3,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const { loadSettings } = require('../utils/settings');
 
 module.exports = {
+    category: 'ボット管理',
     data: new SlashCommandBuilder()
         .setName('viewactivity')
         .setDescription('現在のゲームアクティビティ通知設定を確認します'),

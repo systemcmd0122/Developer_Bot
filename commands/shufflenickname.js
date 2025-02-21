@@ -7,6 +7,7 @@ const PERMISSION_ROLE_ID = '1336993137406771272';
 const activeShuffleSessions = new Map();
 
 module.exports = {
+    category: 'ネタ系',
     data: new SlashCommandBuilder()
         .setName('nicknames')
         .setDescription('サーバーメンバーのニックネームを操作します')

@@ -3,6 +3,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const { loadSettings, saveSettings } = require('../utils/settings');
 
 module.exports = {
+    category: 'ボット管理',
     data: new SlashCommandBuilder()
         .setName('toggleactivity')
         .setDescription('ゲームアクティビティの通知設定を切り替えます'),

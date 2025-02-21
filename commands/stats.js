@@ -2,6 +2,7 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
+    category: 'サーバー管理',
     data: new SlashCommandBuilder()
         .setName('stats')
         .setDescription('サーバーの詳細な統計情報を表示し、管理機能を提供します')

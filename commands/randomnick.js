@@ -7,6 +7,7 @@ const PERMISSION_ROLE_ID = '1336993137406771272';
 const activeRandomnickSessions = new Map();
 
 module.exports = {
+    category: 'ネタ系',
     data: new SlashCommandBuilder()
         .setName('randomnick')
         .setDescription('サーバーメンバーのニックネームをランダムに統一します')

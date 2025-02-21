@@ -2,6 +2,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
+    category: 'サーバー管理',
     data: new SlashCommandBuilder()
         .setName('user')
         .setDescription('サーバーのユーザー一覧を表示します'),

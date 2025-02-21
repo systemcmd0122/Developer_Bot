@@ -2,6 +2,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 
 module.exports = {
+    category: 'ロール管理',
     data: new SlashCommandBuilder()
         .setName('role')
         .setDescription('自分でロールを選択できます'),

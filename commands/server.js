@@ -3,6 +3,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const os = require('os');
 
 module.exports = {
+    category: 'ボット管理',
     data: new SlashCommandBuilder()
         .setName('server')
         .setDescription('ボットをホストしているサーバーの情報を表示します'),

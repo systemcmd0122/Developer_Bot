@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 module.exports = {
+    category: 'ゲーム管理',
     data: new SlashCommandBuilder()
         .setName('friendcode')
         .setDescription('ゲームのフレンドコードを共有・管理')

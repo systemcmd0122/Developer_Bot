@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 
 module.exports = {
+    category: 'メッセージ管理',
     data: new SlashCommandBuilder()
         .setName('clearbotmessages')
         .setDescription('指定したチャンネルのボットメッセージをすべて削除します')
