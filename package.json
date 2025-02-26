@@ -20,6 +20,8 @@
     "express": "^4.21.2",
     "fs": "^0.0.1-security",
     "openai": "^4.85.1",
-    "sqlite3": "^5.1.7"
+    "play-dl": "^1.9.7",
+    "sqlite3": "^5.1.7",
+    "ytdl-core": "^4.11.5"
   }
 }

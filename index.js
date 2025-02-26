@@ -243,12 +243,29 @@ const jsonWatcher = fs.watch(path.join(__dirname, 'data'), (eventType, filename)
     if (filename && filename.endsWith('.json')) {
         const filePath = path.join(__dirname, 'data', filename);
         try {
-            const content = fs.readFileSync(filePath, 'utf8');
-            const fileName = path.basename(filename, '.json');
-            jsonCache[fileName] = JSON.parse(content);
-            console.log(chalk.blue(`✓ Updated JSON cache for ${filename}`));
+            // ファイルの存在確認
+            if (!fs.existsSync(filePath)) {
+                return;
+            }
+            
+            // 少し待って完全に書き込みが終わるのを待つ
+            setTimeout(() => {
+                try {
+                    const content = fs.readFileSync(filePath, 'utf8');
+                    if (content.trim() === '') {
+                        console.log(chalk.yellow(`Skipping empty file: ${filename}`));
+                        return;
+                    }
+                    
+                    const fileName = path.basename(filename, '.json');
+                    jsonCache[fileName] = JSON.parse(content);
+                    console.log(chalk.blue(`✓ Updated JSON cache for ${filename}`));
+                } catch (innerError) {
+                    console.error(`Error updating JSON cache for ${filename}:`, innerError);
+                }
+            }, 500); // 500msの遅延を設ける
         } catch (error) {
-            console.error(`Error updating JSON cache for ${filename}:`, error);
+            console.error(`Error accessing file ${filename}:`, error);
         }
     }
 });
@@ -389,6 +406,13 @@ client.on(Events.InteractionCreate, async interaction => {
                 const roleManageCommand = client.commands.get('rolemanage');
                 if (roleManageCommand && roleManageCommand.handleRoleButton) {
                     await roleManageCommand.handleRoleButton(interaction);
+                }
+            }
+            // ゲーム募集ボタンハンドラー
+            else if (interaction.customId.startsWith('game-')) {
+                const gameCommand = client.commands.get('game');
+                if (gameCommand && gameCommand.handleGameButton) {
+                    await gameCommand.handleGameButton(interaction);
                 }
             }
         }
