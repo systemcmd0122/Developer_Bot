@@ -14,8 +14,14 @@ const DEFAULT_SETTINGS = {
     notifyTimeout: 5, // 分単位
     ignoredRoles: [],
     ignoredChannels: [],
-    activeChecks: {}
+    activeChecks: {} // この中に実際のインターバルIDは保存しない
 };
+
+// 実際のインターバルIDを保存するための分離された変数
+const activeIntervals = {};
+
+// ユーザーアクティビティを追跡するためのオブジェクト
+const userActivity = {};
 
 // 設定の読み込み
 function loadSettings() {
@@ -38,9 +44,41 @@ function saveSettings(settings) {
         if (!fs.existsSync(dirPath)) {
             fs.mkdirSync(dirPath, { recursive: true });
         }
+        
+        // 設定をシリアライズする前に、activeChecksオブジェクトがシリアライズ可能かを確認する
+        // 各ギルドのactiveChecks状態を保持するが、実際のインターバルIDは保存しない
+        for (const guildId in settings) {
+            if (settings[guildId].activeChecks) {
+                // activeChecksを単なるフラグとして扱う
+                settings[guildId].activeChecks = Object.keys(settings[guildId].activeChecks).reduce((acc, key) => {
+                    acc[key] = true; // インターバルIDの代わりにbooleanを保存
+                    return acc;
+                }, {});
+            }
+        }
+        
         fs.writeFileSync(AFK_DATA_PATH, JSON.stringify(settings, null, 2), 'utf8');
     } catch (error) {
         console.error('AFKの設定保存エラー:', error);
+    }
+}
+
+// ユーザーアクティビティを更新する関数
+function updateUserActivity(guildId, userId) {
+    if (!userActivity[guildId]) {
+        userActivity[guildId] = {};
+    }
+    
+    userActivity[guildId][userId] = Date.now();
+    
+    // 設定を読み込み、ユーザーのAFKデータをリセット
+    const settings = loadSettings();
+    if (settings[guildId] && settings[guildId].users && settings[guildId].users[userId]) {
+        // ユーザーのJoinedAtをリセット
+        settings[guildId].users[userId].joinedAt = Date.now();
+        settings[guildId].users[userId].notified = false;
+        saveSettings(settings);
+        console.log(`User ${userId} activity updated in guild ${guildId}`);
     }
 }
 
@@ -50,8 +88,9 @@ function startActiveCheck(client, guildId) {
     const guildSettings = settings[guildId] || { ...DEFAULT_SETTINGS };
     
     // 既存のチェックがあれば解除
-    if (guildSettings.activeChecks && guildSettings.activeChecks[guildId]) {
-        clearInterval(guildSettings.activeChecks[guildId]);
+    if (activeIntervals[guildId]) {
+        clearInterval(activeIntervals[guildId]);
+        delete activeIntervals[guildId];
     }
     
     // AFKチェックが有効な場合のみ実行
@@ -76,7 +115,9 @@ function startActiveCheck(client, guildId) {
                     if (hasIgnoredRole) continue;
                     
                     // ユーザーのAFK時間をチェック
-                    const afkData = guildSettings.users?.[memberId] || {
+                    if (!guildSettings.users) guildSettings.users = {};
+                    
+                    const afkData = guildSettings.users[memberId] || {
                         joinedAt: Date.now(),
                         notified: false
                     };
@@ -85,6 +126,14 @@ function startActiveCheck(client, guildId) {
                     if (!afkData.joinedAt || afkData.channelId !== channel.id) {
                         afkData.joinedAt = Date.now();
                         afkData.channelId = channel.id;
+                        afkData.notified = false;
+                    }
+                    
+                    // アクティビティがあったかチェック
+                    const lastActivity = userActivity[guildId] && userActivity[guildId][memberId];
+                    if (lastActivity && lastActivity > afkData.joinedAt) {
+                        // アクティビティがあった場合はjoinedAtを更新
+                        afkData.joinedAt = lastActivity;
                         afkData.notified = false;
                     }
                     
@@ -139,11 +188,14 @@ function startActiveCheck(client, guildId) {
                         }
                     } else {
                         // ユーザーデータを更新
-                        if (!guildSettings.users) guildSettings.users = {};
                         guildSettings.users[memberId] = afkData;
                     }
                 }
             }
+            
+            // activeChecksオブジェクトの更新
+            if (!guildSettings.activeChecks) guildSettings.activeChecks = {};
+            guildSettings.activeChecks[guildId] = true;
             
             // 設定を保存
             settings[guildId] = guildSettings;
@@ -154,8 +206,13 @@ function startActiveCheck(client, guildId) {
         }
     }, checkIntervalMs);
     
-    // インターバルIDを保存
-    guildSettings.activeChecks[guildId] = intervalId;
+    // インターバルIDを別のオブジェクトに保存
+    activeIntervals[guildId] = intervalId;
+    
+    // activeChecksをフラグとして更新
+    if (!guildSettings.activeChecks) guildSettings.activeChecks = {};
+    guildSettings.activeChecks[guildId] = true;
+    
     settings[guildId] = guildSettings;
     saveSettings(settings);
 }
@@ -300,7 +357,8 @@ module.exports = {
                         { name: 'キック前通知', value: guildSettings.notifyBeforeKick ? `${guildSettings.notifyTimeout}分前` : '無効', inline: true },
                         { name: '除外ロール', value: ignoredRoles, inline: false },
                         { name: '除外チャンネル', value: ignoredChannels, inline: false },
-                        { name: 'ログチャンネル', value: logChannel, inline: false }
+                        { name: 'ログチャンネル', value: logChannel, inline: false },
+                        { name: '活動検知', value: 'メッセージ送信、ボイスチャット参加時に自動リセット', inline: false }
                     )
                     .setTimestamp();
                 
@@ -324,8 +382,13 @@ module.exports = {
                 guildSettings.enabled = false;
                 
                 // 既存のチェックがあれば解除
+                if (activeIntervals[guildId]) {
+                    clearInterval(activeIntervals[guildId]);
+                    delete activeIntervals[guildId];
+                }
+                
+                // activeChecksのフラグをクリア
                 if (guildSettings.activeChecks && guildSettings.activeChecks[guildId]) {
-                    clearInterval(guildSettings.activeChecks[guildId]);
                     delete guildSettings.activeChecks[guildId];
                 }
                 
@@ -469,6 +532,41 @@ module.exports = {
             }
         }
         
+        // イベントリスナーの設定
+        this.setupActivityListeners(client);
+        
         console.log('✓ AFKチェック機能を読み込みました');
-    }
+    },
+    
+    // ユーザーのアクティビティを検知するためのイベントリスナーを設定
+    setupActivityListeners(client) {
+        // メッセージ送信をリッスン
+        client.on('messageCreate', (message) => {
+            if (message.guild && message.author && !message.author.bot) {
+                updateUserActivity(message.guild.id, message.author.id);
+            }
+        });
+        
+        // ボイスチャンネル参加/移動をリッスン
+        client.on('voiceStateUpdate', (oldState, newState) => {
+            if (newState.guild && newState.member && !newState.member.user.bot) {
+                // ユーザーがボイスチャンネルに参加または移動した場合
+                if (newState.channelId && (!oldState.channelId || oldState.channelId !== newState.channelId)) {
+                    updateUserActivity(newState.guild.id, newState.member.id);
+                }
+            }
+        });
+        
+        // インタラクション（ボタンクリックなど）をリッスン
+        client.on('interactionCreate', (interaction) => {
+            if (interaction.guild && interaction.user && !interaction.user.bot) {
+                updateUserActivity(interaction.guild.id, interaction.user.id);
+            }
+        });
+        
+        console.log('✓ ユーザーアクティビティ検知リスナーを設定しました');
+    },
+    
+    // index.js用のexport
+    updateUserActivity
 };
