@@ -434,6 +434,16 @@ client.on(Events.InteractionCreate, async interaction => {
     } catch (error) {
         console.error('Error handling interaction:', error);
     }
+    // AFKチェックの読み込み
+    try {
+        const afkCommand = client.commands.get('afk');
+        if (afkCommand && afkCommand.loadAfkChecks) {
+            afkCommand.loadAfkChecks(client);
+            console.log(chalk.green('✓ AFK checks loaded successfully'));
+        }
+    } catch (error) {
+        console.error(chalk.red('Error loading AFK checks:'), error);
+    }
 });
 
 // Enhanced startup animation
