@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 
 module.exports = {
-    category: 'エンターテイメント',
+    category: 'ネタ系',
     data: new SlashCommandBuilder()
         .setName('fortune')
         .setDescription('今日の運勢を占います')
