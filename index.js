@@ -368,61 +368,79 @@ async function registerCommands(commands, retries = 3) {
     }
 }
 
-// Enhanced interaction handling with command tracking
+// コマンド実行のイベントハンドラー
 client.on(Events.InteractionCreate, async interaction => {
+    if (!interaction.isChatInputCommand()) return;
+
+    const command = client.commands.get(interaction.commandName);
+    if (!command) {
+        console.error(`No command matching ${interaction.commandName} was found.`);
+        return;
+    }
+
     try {
-        if (interaction.isChatInputCommand()) {
-            const command = client.commands.get(interaction.commandName);
-            if (!command) {
-                console.error(`No command matching ${interaction.commandName} was found.`);
-                return;
-            }
+        // Track command usage before execution
+        trackCommand(interaction.commandName, interaction.user);
+        await command.execute(interaction);
+    } catch (error) {
+        console.error('Error executing command:', error);
+        const errorMessage = 'コマンドの実行中にエラーが発生しました。';
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp({ content: errorMessage, ephemeral: true });
+        } else {
+            await interaction.reply({ content: errorMessage, ephemeral: true });
+        }
+    }
+});
 
-            try {
-                // Track command usage before execution
-                trackCommand(interaction.commandName, interaction.user);
-                
-                await command.execute(interaction);
+// ボタン・セレクトメニューのイベントハンドラー
+client.on(Events.InteractionCreate, async interaction => {
+    if (!interaction.isButton() && !interaction.isStringSelectMenu()) return;
+
+    try {
+        // フレンドコードインタラクションハンドラー
+        if (interaction.customId.startsWith('friendcode-')) {
+            const friendCodeCommand = client.commands.get('friendcode');
+            if (friendCodeCommand && friendCodeCommand.handleInteraction) {
+                await friendCodeCommand.handleInteraction(interaction);
+            }
+        }
+        // ロール管理ボタンハンドラー
+        else if (interaction.customId.startsWith('role-')) {
+            const roleManageCommand = client.commands.get('rolemanage');
+            if (roleManageCommand && roleManageCommand.handleRoleButton) {
+                await roleManageCommand.handleRoleButton(interaction);
+            }
+        }
+        // ゲーム募集ボタンハンドラー
+                // ゲーム募集ボタンハンドラー
+                else if (interaction.customId.startsWith('game-')) {
+                    const gameCommand = client.commands.get('game');
+                    if (gameCommand && gameCommand.handleGameButton) {
+                        await gameCommand.handleGameButton(interaction);
+                    }
+                }
             } catch (error) {
-                console.error('Error executing command:', error);
-                const errorMessage = 'コマンドの実行中にエラーが発生しました。';
-                if (interaction.replied || interaction.deferred) {
-                    await interaction.followUp({ content: errorMessage, ephemeral: true });
-                } else {
-                    await interaction.reply({ content: errorMessage, ephemeral: true });
+                console.error('Error handling button/select interaction:', error);
+                if (!interaction.replied && !interaction.deferred) {
+                    await interaction.reply({ 
+                        content: 'インタラクションの処理中にエラーが発生しました。',
+                        ephemeral: true 
+                    });
                 }
             }
-        }
-        else if (interaction.isButton() || interaction.isStringSelectMenu()) {
-            // フレンドコードインタラクションハンドラー
-            if (interaction.customId.startsWith('friendcode-')) {
-                const friendCodeCommand = client.commands.get('friendcode');
-                if (friendCodeCommand && friendCodeCommand.handleInteraction) {
-                    await friendCodeCommand.handleInteraction(interaction);
-                }
-            }
-            // ロール管理ボタンハンドラー
-            else if (interaction.customId.startsWith('role-')) {
-                const roleManageCommand = client.commands.get('rolemanage');
-                if (roleManageCommand && roleManageCommand.handleRoleButton) {
-                    await roleManageCommand.handleRoleButton(interaction);
-                }
-            }
-            // ゲーム募集ボタンハンドラー
-            else if (interaction.customId.startsWith('game-')) {
-                const gameCommand = client.commands.get('game');
-                if (gameCommand && gameCommand.handleGameButton) {
-                    await gameCommand.handleGameButton(interaction);
-                }
-            }
-        }
-        else if (interaction.isAutocomplete()) {
+        });
+        
+        // オートコンプリートのイベントハンドラー
+        client.on(Events.InteractionCreate, async interaction => {
+            if (!interaction.isAutocomplete()) return;
+        
             const command = client.commands.get(interaction.commandName);
             if (!command) {
                 console.error(`No command matching ${interaction.commandName} was found.`);
                 return;
             }
-
+        
             try {
                 if (command.autocomplete) {
                     await command.autocomplete(interaction);
@@ -430,128 +448,128 @@ client.on(Events.InteractionCreate, async interaction => {
             } catch (error) {
                 console.error('Error handling autocomplete:', error);
             }
-        }
-    } catch (error) {
-        console.error('Error handling interaction:', error);
-    }
-    // AFKチェックの読み込み
-    try {
-        const afkCommand = client.commands.get('afk');
-        if (afkCommand && afkCommand.loadAfkChecks) {
-            afkCommand.loadAfkChecks(client);
-            console.log(chalk.green('✓ AFK checks loaded successfully'));
-        }
-    } catch (error) {
-        console.error(chalk.red('Error loading AFK checks:'), error);
-    }
-});
-
-// Enhanced startup animation
-async function animateStartup() {
-    console.clear();
-    
-    const logo = [
-        '▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄',
-        '█░░░░Discord Bot░░░░█',
-        '▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀'
-    ];
-
-    for (let i = 0; i < logo.length; i++) {
-        console.log(chalk.cyan(logo[i]));
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    console.log(chalk.cyan('\n═══════════════════════'));
-    console.log(chalk.yellow('  Starting Services...'));
-    console.log(chalk.cyan('═══════════════════════\n'));
-}
-
-// Enhanced error handling
-process.on('unhandledRejection', (reason, promise) => {
-    console.error(chalk.red('Unhandled Rejection at:'), promise, 'reason:', reason);
-});
-
-process.on('uncaughtException', (error) => {
-    console.error(chalk.red('Uncaught Exception:'), error);
-});
-
-// Reconnection handling
-client.on('disconnect', () => {
-    console.log(chalk.yellow('Bot disconnected. Attempting to reconnect...'));
-});
-
-client.on('reconnecting', () => {
-    console.log(chalk.yellow('Bot reconnecting...'));
-});
-
-// Enhanced startup sequence
-(async () => {
-    try {
-        await animateStartup();
-        
-        const commands = await loadCommands();
-        await registerCommands(commands);
-        
-        loadEvents();
-
-        // Load JSON files on startup
-        const jsonFiles = loadJsonFiles();
-        console.log(chalk.green('✓ JSON files loaded successfully'));
-
-        // Start Express server with enhanced error handling
-        const server = app.listen(PORT, () => {
-            console.log(chalk.green(`✓ Metrics server running on port ${PORT}`));
         });
-
-        server.on('error', (error) => {
-            console.error(chalk.red('Express server error:'), error);
-        });
-
-        console.log(chalk.yellow('🔌 Connecting to Discord...'));
         
-        await client.login(process.env.DISCORD_TOKEN);
-        console.log(chalk.green('✓ Bot is ready!'));
-
-        // フレンドコードの読み込み
-        try {
-            const friendCodeCommand = client.commands.get('friendcode');
-            if (friendCodeCommand && friendCodeCommand.loadData) {
-                client.friendCodes = friendCodeCommand.loadData(client);
-                console.log(chalk.green('✓ Friend codes loaded successfully'));
+        // ボットの準備完了時の処理
+        client.once(Events.ClientReady, async () => {
+            // AFKチェックの初期化
+            try {
+                const afkCommand = client.commands.get('afk');
+                if (afkCommand && afkCommand.loadAfkChecks) {
+                    afkCommand.loadAfkChecks(client);
+                    console.log(chalk.green('✓ AFK checks loaded successfully'));
+                }
+            } catch (error) {
+                console.error(chalk.red('Error loading AFK checks:'), error);
             }
-        } catch (error) {
-            console.error(chalk.red('Error loading friend codes:'), error);
+        });
+        
+        // Enhanced startup animation
+        async function animateStartup() {
+            console.clear();
+            
+            const logo = [
+                '▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄',
+                '█░░░░Discord Bot░░░░█',
+                '▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀'
+            ];
+        
+            for (let i = 0; i < logo.length; i++) {
+                console.log(chalk.cyan(logo[i]));
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        
+            console.log(chalk.cyan('\n═══════════════════════'));
+            console.log(chalk.yellow('  Starting Services...'));
+            console.log(chalk.cyan('═══════════════════════\n'));
         }
-
-        // Memory usage monitoring
-        setInterval(() => {
-            const used = process.memoryUsage();
-            if (used.heapUsed > 512 * 1024 * 1024) { // 512MB threshold
-                console.warn(chalk.yellow('High memory usage detected:', 
-                    `${Math.round(used.heapUsed / 1024 / 1024)}MB`));
+        
+        // Enhanced error handling
+        process.on('unhandledRejection', (reason, promise) => {
+            console.error(chalk.red('Unhandled Rejection at:'), promise, 'reason:', reason);
+        });
+        
+        process.on('uncaughtException', (error) => {
+            console.error(chalk.red('Uncaught Exception:'), error);
+        });
+        
+        // Reconnection handling
+        client.on('disconnect', () => {
+            console.log(chalk.yellow('Bot disconnected. Attempting to reconnect...'));
+        });
+        
+        client.on('reconnecting', () => {
+            console.log(chalk.yellow('Bot reconnecting...'));
+        });
+        
+        // Enhanced startup sequence
+        (async () => {
+            try {
+                await animateStartup();
+                
+                const commands = await loadCommands();
+                await registerCommands(commands);
+                
+                loadEvents();
+        
+                // Load JSON files on startup
+                const jsonFiles = loadJsonFiles();
+                console.log(chalk.green('✓ JSON files loaded successfully'));
+        
+                // Start Express server with enhanced error handling
+                const server = app.listen(PORT, () => {
+                    console.log(chalk.green(`✓ Metrics server running on port ${PORT}`));
+                });
+        
+                server.on('error', (error) => {
+                    console.error(chalk.red('Express server error:'), error);
+                });
+        
+                console.log(chalk.yellow('🔌 Connecting to Discord...'));
+                
+                await client.login(process.env.DISCORD_TOKEN);
+                console.log(chalk.green('✓ Bot is ready!'));
+        
+                // フレンドコードの読み込み
+                try {
+                    const friendCodeCommand = client.commands.get('friendcode');
+                    if (friendCodeCommand && friendCodeCommand.loadData) {
+                        client.friendCodes = friendCodeCommand.loadData(client);
+                        console.log(chalk.green('✓ Friend codes loaded successfully'));
+                    }
+                } catch (error) {
+                    console.error(chalk.red('Error loading friend codes:'), error);
+                }
+        
+                // Memory usage monitoring
+                setInterval(() => {
+                    const used = process.memoryUsage();
+                    if (used.heapUsed > 512 * 1024 * 1024) { // 512MB threshold
+                        console.warn(chalk.yellow('High memory usage detected:', 
+                            `${Math.round(used.heapUsed / 1024 / 1024)}MB`));
+                    }
+                }, 60000);
+        
+            } catch (error) {
+                console.error(chalk.red('Fatal error during startup:'), error);
+                process.exit(1);
             }
-        }, 60000);
-
-    } catch (error) {
-        console.error(chalk.red('Fatal error during startup:'), error);
-        process.exit(1);
-    }
-})();
-
-// Enhanced graceful shutdown
-async function gracefulShutdown() {
-    console.log(chalk.yellow('\nGracefully shutting down...'));
-    try {
-        await client.destroy();
-        process.exit(0);
-    } catch (error) {
-        console.error(chalk.red('Error during shutdown:'), error);
-        process.exit(1);
-    }
-}
-
-process.on('SIGINT', gracefulShutdown);
-process.on('SIGTERM', gracefulShutdown);
-
-// Export the app for testing purposes
-module.exports = { app, client };
+        })();
+        
+        // Enhanced graceful shutdown
+        async function gracefulShutdown() {
+            console.log(chalk.yellow('\nGracefully shutting down...'));
+            try {
+                await client.destroy();
+                process.exit(0);
+            } catch (error) {
+                console.error(chalk.red('Error during shutdown:'), error);
+                process.exit(1);
+            }
+        }
+        
+        process.on('SIGINT', gracefulShutdown);
+        process.on('SIGTERM', gracefulShutdown);
+        
+        // Export the app for testing purposes
+        module.exports = { app, client };
