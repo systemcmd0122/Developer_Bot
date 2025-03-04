@@ -1,5 +1,9 @@
-// commands/rolemanage.js
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const fs = require('fs').promises;
+const path = require('path');
+
+// 保存ディレクトリのパスを設定
+const SAVE_DIR = path.join(process.cwd(), 'data', 'roleboards');
 
 module.exports = {
     category: 'ロール管理',
@@ -78,9 +82,40 @@ module.exports = {
                         .setDescription('削除するロールボードの名前')
                         .setRequired(true)
                 )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('save')
+                .setDescription('ロールボードの設定を保存')
+                .addStringOption(option =>
+                    option
+                        .setName('name')
+                        .setDescription('保存するロールボードの名前')
+                        .setRequired(true)
+                )
+                .addStringOption(option =>
+                    option
+                        .setName('filename')
+                        .setDescription('保存するファイル名（.txtは自動で追加）')
+                        .setRequired(true)
+                )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('load')
+                .setDescription('保存したロールボードの設定を読み込む')
+                .addStringOption(option =>
+                    option
+                        .setName('filename')
+                        .setDescription('読み込むファイル名（.txtは自動で追加）')
+                        .setRequired(true)
+                )
         ),
 
     async execute(interaction) {
+        // 保存ディレクトリの作成を確認
+        await this.ensureSaveDirectory();
+
         const serverRoleBoards = interaction.client.roleBoards;
         if (!interaction.client.roleBoards[interaction.guildId]) {
             interaction.client.roleBoards[interaction.guildId] = {};
@@ -122,6 +157,104 @@ module.exports = {
                     content: `ロールボード「${name}」を作成しました。`,
                     ephemeral: true
                 });
+            }
+
+            case 'save': {
+                const boardName = interaction.options.getString('name');
+                const fileName = interaction.options.getString('filename');
+
+                const board = serverRoleBoards[interaction.guildId][boardName];
+                if (!board) {
+                    return interaction.reply({
+                        content: 'そのロールボードは存在しません。',
+                        ephemeral: true
+                    });
+                }
+
+                try {
+                    // 保存データの準備
+                    const saveData = {
+                        guildId: interaction.guildId,
+                        boardName: boardName,
+                        messageId: board.messageId,
+                        channelId: board.channelId,
+                        description: board.description,
+                        roles: board.roles,
+                        savedAt: new Date().toISOString(),
+                        savedBy: interaction.user.id
+                    };
+
+                    // ファイルに保存
+                    const filePath = path.join(SAVE_DIR, `${fileName}.txt`);
+                    await fs.writeFile(filePath, JSON.stringify(saveData, null, 2), 'utf8');
+
+                    return interaction.reply({
+                        content: `ロールボード「${boardName}」の設定を「${fileName}.txt」に保存しました。`,
+                        ephemeral: true
+                    });
+                } catch (error) {
+                    console.error('ロールボード保存中にエラーが発生:', error);
+                    return interaction.reply({
+                        content: 'ロールボードの保存中にエラーが発生しました。',
+                        ephemeral: true
+                    });
+                }
+            }
+
+            case 'load': {
+                const fileName = interaction.options.getString('filename');
+                const filePath = path.join(SAVE_DIR, `${fileName}.txt`);
+
+                try {
+                    // ファイルの存在確認
+                    await fs.access(filePath);
+
+                    // ファイルの読み込み
+                    const fileContent = await fs.readFile(filePath, 'utf8');
+                    const saveData = JSON.parse(fileContent);
+
+                    // 同じギルドかチェック
+                    if (saveData.guildId !== interaction.guildId) {
+                        return interaction.reply({
+                            content: 'この設定は別のサーバー用のものです。',
+                            ephemeral: true
+                        });
+                    }
+
+                    // 新しいメッセージを作成
+                    const embed = new EmbedBuilder()
+                        .setTitle(`🎭 ${saveData.boardName}`)
+                        .setDescription(saveData.description)
+                        .setColor('#ff00ff')
+                        .setTimestamp();
+
+                    const message = await interaction.channel.send({
+                        embeds: [embed],
+                        components: []
+                    });
+
+                    // 新しいボードデータを設定
+                    serverRoleBoards[interaction.guildId][saveData.boardName] = {
+                        messageId: message.id,
+                        channelId: interaction.channel.id,
+                        description: saveData.description,
+                        roles: saveData.roles
+                    };
+
+                    // ボードを更新
+                    await this.updateRoleBoard(interaction, saveData.boardName);
+
+                    return interaction.reply({
+                        content: `ロールボード「${saveData.boardName}」の設定を読み込み、新しく作成しました。`,
+                        ephemeral: true
+                    });
+                } catch (error) {
+                    console.error('ロールボード読み込み中にエラーが発生:', error);
+                    return interaction.reply({
+                        content: 'ロールボードの読み込み中にエラーが発生しました。ファイルが存在しないか、正しい形式ではない可能性があります。',
+                        ephemeral: true
+                    });
+                }
             }
 
             case 'add': {
@@ -245,7 +378,15 @@ module.exports = {
         }
     },
 
-    // 新しいヘルパーメソッド: ロールボードの更新を一元化
+    async ensureSaveDirectory() {
+        try {
+            await fs.access(SAVE_DIR);
+        } catch (error) {
+            // ディレクトリが存在しない場合は作成
+            await fs.mkdir(SAVE_DIR, { recursive: true });
+        }
+    },
+
     async updateRoleBoard(interaction, boardName) {
         const board = interaction.client.roleBoards[interaction.guildId][boardName];
         if (!board) return false;
@@ -256,7 +397,6 @@ module.exports = {
 
             const embed = EmbedBuilder.from(message.embeds[0]);
             
-            // ロールの説明を埋め込みに追加
             let description = board.description + '\n\n';
             for (const [roleId, roleData] of Object.entries(board.roles)) {
                 description += `<@&${roleId}>: ${roleData.description}\n`;
@@ -264,17 +404,13 @@ module.exports = {
             
             embed.setDescription(description);
 
-            // ボタンコンポーネントを再構築
             const components = [];
             const roleEntries = Object.entries(board.roles);
             
-            // ロールが存在する場合のみボタンを作成
             if (roleEntries.length > 0) {
-                // 5個ずつのボタングループに分割
                 for (let i = 0; i < roleEntries.length; i += 5) {
                     const row = new ActionRowBuilder();
                     
-                    // 現在のグループ内のロールでボタンを作成（最大5個）
                     const groupRoles = roleEntries.slice(i, i + 5);
                     for (const [roleId, roleData] of groupRoles) {
                         const button = new ButtonBuilder()
@@ -289,7 +425,6 @@ module.exports = {
                 }
             }
 
-            // メッセージを更新
             await message.edit({
                 embeds: [embed],
                 components: components
@@ -311,7 +446,6 @@ module.exports = {
         const member = interaction.member;
         
         try {
-            // ロールが存在するか確認
             const role = await interaction.guild.roles.fetch(roleId);
             if (!role) {
                 return await interaction.reply({
