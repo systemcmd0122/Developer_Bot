@@ -1,4 +1,3 @@
-// commands/friendcode.js
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -90,7 +89,7 @@ module.exports = {
             interaction.client.friendCodes[interaction.guildId] = {
                 users: {},
                 boards: {},
-                popularGames: [] // 人気ゲームのリストを追加
+                popularGames: []
             };
         }
 
@@ -104,25 +103,18 @@ module.exports = {
                 const note = interaction.options.getString('note') || '';
                 const userId = interaction.user.id;
 
-                // ユーザーのフレンドコード初期化
                 if (!guildData.users[userId]) {
                     guildData.users[userId] = {};
                 }
 
-                // フレンドコードを登録
                 guildData.users[userId][game] = {
                     code: code,
                     note: note,
                     updatedAt: new Date().toISOString()
                 };
 
-                // 人気ゲームリストを更新
                 this.updatePopularGames(interaction.client, interaction.guildId);
-
-                // データ永続化
                 await this.saveData(interaction.client);
-
-                // 掲示板の更新
                 await this.updateAllBoards(interaction);
 
                 const embed = new EmbedBuilder()
@@ -161,21 +153,14 @@ module.exports = {
                     });
                 }
 
-                // フレンドコードを削除
                 delete guildData.users[userId][game];
 
-                // データが空になったら、ユーザーエントリも削除
                 if (Object.keys(guildData.users[userId]).length === 0) {
                     delete guildData.users[userId];
                 }
 
-                // 人気ゲームリストを更新
                 this.updatePopularGames(interaction.client, interaction.guildId);
-
-                // データ永続化
                 await this.saveData(interaction.client);
-
-                // 掲示板の更新
                 await this.updateAllBoards(interaction);
 
                 return interaction.reply({
@@ -202,7 +187,6 @@ module.exports = {
                     .setThumbnail(interaction.user.displayAvatarURL())
                     .setTimestamp();
 
-                // ゲームごとにフィールドを追加（縦一列に並べる）
                 for (const [game, data] of Object.entries(userCodes)) {
                     let value = `コード: ${data.code}`;
                     if (data.note) {
@@ -213,7 +197,7 @@ module.exports = {
                     embed.addFields({
                         name: game,
                         value: value,
-                        inline: false // 縦一列に表示するためfalseに変更
+                        inline: false
                     });
                 }
 
@@ -222,13 +206,19 @@ module.exports = {
                         new ButtonBuilder()
                             .setCustomId('friendcode-delete-all')
                             .setLabel('すべて削除')
-                            .setStyle(ButtonStyle.Danger),
+                            .setStyle(ButtonStyle.Danger)
                     );
+
+                // ボタンインタラクションを保存
+                interaction.client.interactionManager.saveButtonInteraction(interaction.id, {
+                    type: 'delete-all',
+                    userId: interaction.user.id
+                });
 
                 return interaction.reply({
                     embeds: [embed],
                     components: [row],
-                    ephemeral: true // ユーザーだけに表示
+                    ephemeral: true
                 });
             }
 
@@ -245,12 +235,11 @@ module.exports = {
 
                 const embed = new EmbedBuilder()
                     .setTitle(`${targetUser.username} のフレンドコード一覧`)
-                    .setDescription(`<@${targetUser.id}>`) // メンションを追加
+                    .setDescription(`<@${targetUser.id}>`)
                     .setColor('#0099ff')
                     .setThumbnail(targetUser.displayAvatarURL())
                     .setTimestamp();
 
-                // ゲームごとにフィールドを追加（縦一列に並べる）
                 for (const [game, data] of Object.entries(userCodes)) {
                     let value = `コード: ${data.code}`;
                     if (data.note) {
@@ -261,18 +250,17 @@ module.exports = {
                     embed.addFields({
                         name: game,
                         value: value,
-                        inline: false // 縦一列に表示するためfalseに変更
+                        inline: false
                     });
                 }
 
                 return interaction.reply({
                     embeds: [embed],
-                    ephemeral: true // ユーザーだけに表示
+                    ephemeral: true
                 });
             }
 
             case 'games': {
-                // 登録されているゲーム一覧を集計
                 const games = new Map();
                 for (const userId in guildData.users) {
                     for (const game in guildData.users[userId]) {
@@ -295,22 +283,19 @@ module.exports = {
                     .setColor('#ff9900')
                     .setTimestamp();
 
-                // ゲーム名と登録者数をフィールドに追加（縦一列に並べる）
                 const sortedGames = [...games.entries()]
-                    .sort((a, b) => b[1] - a[1]); // 登録者数で降順ソート
+                    .sort((a, b) => b[1] - a[1]);
 
                 for (const [game, count] of sortedGames) {
-                    // 上限があるので最大25個に制限
                     if (embed.data.fields && embed.data.fields.length >= 25) break;
 
                     embed.addFields({
                         name: game,
                         value: `登録者数: ${count}人`,
-                        inline: false // 縦一列に表示するためfalseに変更
+                        inline: false
                     });
                 }
 
-                // ゲーム選択用のセレクトメニューを作成
                 const gameOptions = sortedGames.slice(0, 25).map(([game, count]) => ({
                     label: game,
                     description: `登録者数: ${count}人`,
@@ -325,10 +310,16 @@ module.exports = {
                             .addOptions(gameOptions)
                     );
 
+                // メニューインタラクションを保存
+                interaction.client.interactionManager.saveMenuInteraction(interaction.id, {
+                    type: 'game-select',
+                    games: gameOptions
+                });
+
                 return interaction.reply({
                     embeds: [embed],
                     components: [row],
-                    ephemeral: true // ユーザーだけに表示
+                    ephemeral: true
                 });
             }
 
@@ -336,7 +327,6 @@ module.exports = {
                 const title = interaction.options.getString('title');
                 const description = interaction.options.getString('description') || 'フレンドコード掲示板です。各ゲームのボタンを押すと、登録者が表示されます。';
 
-                // 掲示板の作成
                 const embed = new EmbedBuilder()
                     .setTitle(`🎮 ${title}`)
                     .setDescription(description)
@@ -348,7 +338,6 @@ module.exports = {
                     components: []
                 });
 
-                // 掲示板情報を保存
                 if (!guildData.boards) {
                     guildData.boards = {};
                 }
@@ -359,10 +348,14 @@ module.exports = {
                     description: description
                 };
 
-                // データ永続化
-                await this.saveData(interaction.client);
+                // ボード情報を保存
+                interaction.client.interactionManager.saveBoardInteraction(message.id, {
+                    channelId: interaction.channel.id,
+                    title: title,
+                    description: description
+                });
 
-                // 掲示板を更新
+                await this.saveData(interaction.client);
                 await this.updateBoard(interaction, message.id);
 
                 return interaction.reply({
@@ -377,14 +370,11 @@ module.exports = {
     async saveData(client) {
         const dataDir = path.join(__dirname, '..', 'data');
         
-        // データディレクトリがなければ作成
         if (!fs.existsSync(dataDir)) {
             fs.mkdirSync(dataDir, { recursive: true });
         }
         
         const filePath = path.join(dataDir, 'friendcodes.json');
-        
-        // インデント付きで保存して人間が読めるようにする
         const dataToSave = JSON.stringify(client.friendCodes, null, 2);
         
         return new Promise((resolve, reject) => {
@@ -399,12 +389,11 @@ module.exports = {
         });
     },
 
-    // データ読み込み用のヘルパーメソッド（インデックスjsから呼び出す）
+    // データ読み込み用のヘルパーメソッド
     loadData(client) {
         const dataDir = path.join(__dirname, '..', 'data');
         const filePath = path.join(dataDir, 'friendcodes.json');
         
-        // ファイルが存在しない場合は空のオブジェクトを返す
         if (!fs.existsSync(filePath)) {
             return {};
         }
@@ -413,7 +402,6 @@ module.exports = {
             const data = fs.readFileSync(filePath, 'utf8');
             const parsedData = JSON.parse(data);
             
-            // 各サーバーごとに人気ゲームリストを更新
             for (const guildId in parsedData) {
                 this.updatePopularGames(client, guildId);
             }
@@ -432,14 +420,12 @@ module.exports = {
         const guildData = client.friendCodes[guildId];
         const games = new Map();
         
-        // ゲームの登録者数を集計
         for (const userId in guildData.users) {
             for (const game in guildData.users[userId]) {
                 games.set(game, (games.get(game) || 0) + 1);
             }
         }
         
-        // 登録者数で降順ソートして、上位10件を保存
         const popularGames = [...games.entries()]
             .sort((a, b) => b[1] - a[1])
             .slice(0, 10)
@@ -459,7 +445,6 @@ module.exports = {
             const channel = await interaction.guild.channels.fetch(board.channelId);
             const message = await channel.messages.fetch(messageId);
             
-            // すべてのゲームを収集
             const games = new Set();
             for (const userId in guildData.users) {
                 for (const game in guildData.users[userId]) {
@@ -467,30 +452,26 @@ module.exports = {
                 }
             }
             
-            // ゲームがない場合
             if (games.size === 0) {
+                const embed = new EmbedBuilder()
+                    .setTitle(board.title)
+                    .setDescription(board.description + '\n\n現在登録されているゲームはありません。')
+                    .setColor('#00aaff')
+                    .setTimestamp();
+
                 await message.edit({
-                    embeds: [
-                        new EmbedBuilder()
-                            .setTitle(board.title)
-                            .setDescription(board.description + '\n\n現在登録されているゲームはありません。')
-                            .setColor('#00aaff')
-                            .setTimestamp()
-                    ],
+                    embeds: [embed],
                     components: []
                 });
                 return true;
             }
             
-            // 埋め込みを更新
             const embed = EmbedBuilder.from(message.embeds[0]);
             embed.setDescription(board.description);
             
-            // セレクトメニューを使って表示（最大25個まで）
             const sortedGames = [...games].sort();
             const components = [];
             
-            // 25個までしか選択肢を表示できないので、分割する
             for (let i = 0; i < Math.min(sortedGames.length, 25); i += 25) {
                 const gameOptions = sortedGames.slice(i, i + 25).map(game => ({
                     label: game,
@@ -506,9 +487,15 @@ module.exports = {
                     );
                 
                 components.push(row);
+
+                // メニューインタラクションを保存
+                interaction.client.interactionManager.saveMenuInteraction(`board-${messageId}`, {
+                    type: 'board-game-select',
+                    games: gameOptions,
+                    boardId: messageId
+                });
             }
             
-            // メッセージを更新
             await message.edit({
                 embeds: [embed],
                 components: components
@@ -534,21 +521,32 @@ module.exports = {
 
     // ボタン・セレクトメニューハンドラー
     async handleInteraction(interaction) {
-        // ボタンのハンドリング
         if (interaction.isButton()) {
             const customId = interaction.customId;
             
-            // フレンドコード関連のボタンか確認
             if (!customId.startsWith('friendcode-')) return;
             
             const guildData = interaction.client.friendCodes[interaction.guildId];
             
-            // 「すべて削除」ボタン
+            // 保存されたボタンインタラクションを取得
+            const buttonData = interaction.client.interactionManager.getButtonInteraction(interaction.message.id);
+            
             if (customId === 'friendcode-delete-all') {
+                if (!buttonData || buttonData.userId !== interaction.user.id) {
+                    await interaction.reply({
+                        content: 'このボタンは使用できません。',
+                        ephemeral: true
+                    });
+                    return;
+                }
+
                 if (guildData.users[interaction.user.id]) {
                     delete guildData.users[interaction.user.id];
                     await this.saveData(interaction.client);
                     await this.updateAllBoards(interaction);
+                    
+                    // インタラクションを削除
+                    interaction.client.interactionManager.removeInteraction(interaction.message.id);
                     
                     await interaction.reply({
                         content: 'すべてのフレンドコードを削除しました。',
@@ -564,23 +562,27 @@ module.exports = {
             }
         }
         
-        // セレクトメニューのハンドリング
         if (interaction.isStringSelectMenu()) {
             const customId = interaction.customId;
             
-            // ゲーム選択メニュー
-            if (customId === 'friendcode-select-game') {
-                const gameName = interaction.values[0];
-                await this.showGameUsers(interaction, gameName);
-                return;
-            }
+            // 保存されたメニューインタラクションを取得
+            const menuData = interaction.client.interactionManager.getMenuInteraction(
+                customId.startsWith('friendcode-board-') ? 
+                `board-${customId.split('-').pop()}` : 
+                interaction.message.id
+            );
             
-            // 掲示板のセレクトメニュー
-            if (customId.startsWith('friendcode-board-')) {
-                const gameName = interaction.values[0];
-                await this.showGameUsers(interaction, gameName);
+            if (!menuData) {
+                await interaction.reply({
+                    content: 'このメニューは使用できません。',
+                    ephemeral: true
+                });
                 return;
             }
+
+            const gameName = interaction.values[0];
+            await this.showGameUsers(interaction, gameName);
+            return;
         }
     },
 
@@ -589,7 +591,6 @@ module.exports = {
         const guildData = interaction.client.friendCodes[interaction.guildId];
         const usersWithGame = [];
         
-        // ゲームを登録しているユーザーを探す
         for (const userId in guildData.users) {
             if (guildData.users[userId][gameName]) {
                 usersWithGame.push({
@@ -612,7 +613,6 @@ module.exports = {
             .setColor('#ff00ff')
             .setTimestamp();
         
-        // ユーザーごとにフィールドを追加（縦一列に並べる、メンションとアイコン付き）
         for (const user of usersWithGame) {
             try {
                 const member = await interaction.guild.members.fetch(user.userId);
@@ -621,29 +621,26 @@ module.exports = {
                     value += `\n備考: ${user.data.note}`;
                 }
                 
-                // ユーザー名とアイコンを含むフィールド
                 embed.addFields({
                     name: member.user.username,
                     value: value,
-                    inline: false // 縦一列に表示するためfalseに変更
+                    inline: false
                 });
                 
-                // アバターを設定（一番最後に更新されたユーザーのアバターが表示される）
                 embed.setThumbnail(member.user.displayAvatarURL());
             } catch (error) {
                 console.error(`ユーザー情報取得エラー (ID: ${user.userId}):`, error);
-                // エラーの場合でもIDだけは表示
                 embed.addFields({
                     name: `不明なユーザー (ID: ${user.userId})`,
                     value: `<@${user.userId}>\nコード: ${user.data.code}`,
-                    inline: false // 縦一列に表示するためfalseに変更
+                    inline: false
                 });
             }
         }
         
         await interaction.reply({
             embeds: [embed],
-            ephemeral: true // ユーザーだけに表示
+            ephemeral: true
         });
     },
 
@@ -658,17 +655,12 @@ module.exports = {
         const input = focusedOption.value.toLowerCase();
         let choices = [];
         
-        // 自分が登録したゲームのリスト
         const userGames = guildData.users?.[interaction.user.id] || {};
         
         if (interaction.options.getSubcommand() === 'remove') {
-            // 削除の場合は自分が登録したゲームだけを表示
             choices = Object.keys(userGames);
         } else {
-            // 追加の場合は既存の人気ゲームリストを表示
             choices = guildData.popularGames || [];
-            
-            // サーバー内の全ゲームも含める
             const allGames = new Set(choices);
             
             for (const userId in guildData.users || {}) {
@@ -680,12 +672,10 @@ module.exports = {
             choices = [...allGames];
         }
         
-        // 入力文字列でフィルタリング
         const filtered = input
             ? choices.filter(game => game.toLowerCase().includes(input))
             : choices;
         
-        // 最大25個まで
         await interaction.respond(
             filtered.slice(0, 25).map(game => ({
                 name: game,

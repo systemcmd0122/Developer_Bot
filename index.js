@@ -436,6 +436,11 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
+// InteractionManagerの初期化コードをindex.jsのclient初期化直後に追加
+const InteractionManager = require('./events/interactions');
+client.interactionManager = new InteractionManager(client);
+
+
 // Enhanced startup animation
 async function animateStartup() {
     console.clear();
