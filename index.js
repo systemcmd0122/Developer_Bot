@@ -53,6 +53,30 @@ app.use((req, res, next) => {
     next();
 });
 
+// Koyebスリープモード対策のエンドポイント
+app.get('/ping', (req, res) => {
+    res.status(200).send('pong');
+});
+
+// Koyebスリープ防止の自己ping機能
+const PING_INTERVAL = 5 * 60 * 1000; // 5分
+function keepAlive() {
+    const url = process.env.APP_URL || `http://localhost:${PORT}`;
+    setInterval(() => {
+        try {
+            https.get(`${url}/ping`, (resp) => {
+                if (resp.statusCode === 200) {
+                    console.log(chalk.blue('✓ Keep-alive ping successful'));
+                }
+            }).on('error', (err) => {
+                console.error('Keep-alive ping failed:', err.message);
+            });
+        } catch (error) {
+            console.error('Error in keep-alive ping:', error);
+        }
+    }, PING_INTERVAL);
+}
+
 const client = new Client({ 
     intents: [
         GatewayIntentBits.Guilds,
@@ -368,16 +392,6 @@ async function registerCommands(commands, retries = 3) {
     }
 }
 
-// RPGコマンドのインタラクションハンドラーを設定
-client.on('interactionCreate', async (interaction) => {
-    if (interaction.isButton()) {
-        const rpgCommand = client.commands.get('rpg');
-        if (rpgCommand && rpgCommand.handleInteraction) {
-            await rpgCommand.handleInteraction(interaction);
-        }
-    }
-});
-
 // Enhanced interaction handling with command tracking
 client.on(Events.InteractionCreate, async interaction => {
     try {
@@ -446,10 +460,9 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
-// InteractionManagerの初期化コードをindex.jsのclient初期化直後に追加
+// InteractionManagerの初期化
 const InteractionManager = require('./events/interactions');
 client.interactionManager = new InteractionManager(client);
-
 
 // Enhanced startup animation
 async function animateStartup() {
@@ -511,6 +524,10 @@ client.on('reconnecting', () => {
         server.on('error', (error) => {
             console.error(chalk.red('Express server error:'), error);
         });
+
+        // Start keep-alive mechanism
+        keepAlive();
+        console.log(chalk.green('✓ Keep-alive service started'));
 
         console.log(chalk.yellow('🔌 Connecting to Discord...'));
         
