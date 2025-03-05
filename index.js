@@ -368,6 +368,16 @@ async function registerCommands(commands, retries = 3) {
     }
 }
 
+// RPGコマンドのインタラクションハンドラーを設定
+client.on('interactionCreate', async (interaction) => {
+    if (interaction.isButton()) {
+        const rpgCommand = client.commands.get('rpg');
+        if (rpgCommand && rpgCommand.handleInteraction) {
+            await rpgCommand.handleInteraction(interaction);
+        }
+    }
+});
+
 // Enhanced interaction handling with command tracking
 client.on(Events.InteractionCreate, async interaction => {
     try {

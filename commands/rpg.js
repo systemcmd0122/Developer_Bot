@@ -585,6 +585,124 @@ module.exports = {
             .setTimestamp();
 
         await interaction.reply({ embeds: [embed] });
+    },
+
+    async handleInteraction(interaction) {
+        if (!interaction.isButton()) return;
+
+        const userId = interaction.user.id;
+        if (!activeBattles.has(userId)) return;
+
+        const battleData = activeBattles.get(userId);
+        const playerData = battleData.player;
+
+        // ボタンのカスタムIDに基づいてアクションを処理
+        if (interaction.customId === 'attack') {
+            // 通常攻撃の処理
+            const damage = Math.max(1, playerData.atk - battleData.monster.def);
+            battleData.monsterHp -= damage;
+            battleData.message = `${playerData.username}の攻撃！\n${battleData.monster.name}に${damage}のダメージ！`;
+        } else if (interaction.customId.startsWith('skill_')) {
+            // スキル攻撃の処理
+            const skillName = interaction.customId.replace('skill_', '');
+            const skill = JOBS[playerData.job].skills[skillName];
+
+            if (playerData.mp < skill.mp) {
+                await interaction.reply({
+                    content: 'MPが足りません！',
+                    ephemeral: true
+                });
+                return;
+            }
+
+            playerData.mp -= skill.mp;
+            let damage = 0;
+
+            switch (skill.type) {
+                case 'attack':
+                    damage = Math.max(1, Math.floor(playerData.atk * skill.power) - battleData.monster.def);
+                    battleData.monsterHp -= damage;
+                    battleData.message = `${playerData.username}は${skillName}を使った！\n${battleData.monster.name}に${damage}のダメージ！`;
+                    break;
+                case 'heal':
+                    const healAmount = Math.min(skill.power, playerData.maxHp - playerData.hp);
+                    playerData.hp += healAmount;
+                    battleData.message = `${playerData.username}は${skillName}を使った！\nHPが${healAmount}回復した！`;
+                    break;
+            }
+        } else if (interaction.customId === 'escape') {
+            // 逃走の処理
+            const escapeChance = Math.random();
+            if (escapeChance > 0.5) {
+                battleData.message = '逃げ出した！';
+                activeBattles.delete(userId);
+                this.savePlayerData(userId, playerData);
+                
+                await interaction.update({
+                    embeds: [this.createBattleEmbed(battleData)],
+                    components: []
+                });
+                return;
+            } else {
+                battleData.message = '逃げ出せなかった！';
+            }
+        }
+
+        // モンスターの攻撃
+        if (battleData.monsterHp > 0) {
+            const monsterDamage = Math.max(1, battleData.monster.atk - playerData.def);
+            playerData.hp -= monsterDamage;
+            battleData.message += `\n${battleData.monster.name}の攻撃！\n${playerData.username}に${monsterDamage}のダメージ！`;
+        }
+
+        // 戦闘終了判定
+        if (battleData.monsterHp <= 0) {
+            // 勝利処理
+            const expGain = battleData.monster.exp;
+            const goldGain = battleData.monster.gold;
+            playerData.exp += expGain;
+            playerData.gold += goldGain;
+            playerData.battleWins++;
+
+            battleData.message = `${battleData.monster.name}を倒した！\n${expGain}の経験値と${goldGain}Gを獲得！`;
+            
+            // レベルアップ判定
+            if (this.checkLevelUp(playerData)) {
+                battleData.message += `\nレベルアップ！ ${playerData.level}になった！`;
+            }
+
+            activeBattles.delete(userId);
+            this.savePlayerData(userId, playerData);
+
+            await interaction.update({
+                embeds: [this.createBattleEmbed(battleData)],
+                components: []
+            });
+            return;
+        } else if (playerData.hp <= 0) {
+            // 敗北処理
+            playerData.hp = Math.max(1, Math.floor(playerData.maxHp * 0.1));
+            playerData.gold = Math.max(0, playerData.gold - Math.floor(playerData.gold * 0.1));
+            playerData.battleLosses++;
+
+            battleData.message = '力尽きてしまった...\n最近の町に戻された...';
+            
+            activeBattles.delete(userId);
+            this.savePlayerData(userId, playerData);
+
+            await interaction.update({
+                embeds: [this.createBattleEmbed(battleData)],
+                components: []
+            });
+            return;
+        }
+
+        // 戦闘継続
+        this.savePlayerData(userId, playerData);
+        await interaction.update({
+            embeds: [this.createBattleEmbed(battleData)],
+            components: this.createBattleButtons(playerData)
+        });
     }
 };
 
