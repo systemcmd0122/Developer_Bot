@@ -55,25 +55,69 @@ app.use((req, res, next) => {
 
 // Koyebスリープモード対策のエンドポイント
 app.get('/ping', (req, res) => {
-    res.status(200).send('pong');
+    const timestamp = new Date().toISOString();
+    res.status(200).json({
+        status: 'ok',
+        timestamp,
+        memory: process.memoryUsage(),
+        uptime: process.uptime()
+    });
 });
 
-// Koyebスリープ防止の自己ping機能
-const PING_INTERVAL = 5 * 60 * 1000; // 5分
-function keepAlive() {
-    const url = process.env.APP_URL || `http://localhost:${PORT}`;
-    setInterval(() => {
-        try {
-            https.get(`${url}/ping`, (resp) => {
-                if (resp.statusCode === 200) {
-                    console.log(chalk.blue('✓ Keep-alive ping successful'));
-                }
-            }).on('error', (err) => {
-                console.error('Keep-alive ping failed:', err.message);
-            });
-        } catch (error) {
-            console.error('Error in keep-alive ping:', error);
+// Koyebスリープ防止の設定
+const PING_INTERVAL = 3 * 60 * 1000; // 3分
+const MAX_RETRY_COUNT = 3;
+const RETRY_DELAY = 10000; // 10秒
+
+// ping用の詳細なロギング関数
+function logPingStatus(status, details = '') {
+    const timestamp = new Date().toISOString();
+    const message = `[${timestamp}] Keep-alive ping: ${status}${details ? ` - ${details}` : ''}`;
+    console.log(chalk.blue(message));
+}
+
+// ping失敗時のリトライ処理
+async function retryPing(url, retryCount = 0) {
+    try {
+        const response = await fetch(url);
+        if (response.ok) {
+            logPingStatus('success', `Status: ${response.status}`);
+            return true;
         }
+    } catch (error) {
+        if (retryCount < MAX_RETRY_COUNT) {
+            logPingStatus('retry', `Attempt ${retryCount + 1}/${MAX_RETRY_COUNT}`);
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            return retryPing(url, retryCount + 1);
+        }
+        logPingStatus('failed', error.message);
+        return false;
+    }
+}
+
+// 強化されたkeepAlive関数
+function keepAlive() {
+    const appUrl = process.env.APP_URL || `http://localhost:${PORT}`;
+    const urls = [
+        `${appUrl}/ping`,
+        `${appUrl.replace('http://', 'https://')}/ping`
+    ];
+
+    setInterval(async () => {
+        for (const url of urls) {
+            try {
+                const isSuccess = await retryPing(url);
+                if (isSuccess) break; // 成功したら次のURLは試さない
+            } catch (error) {
+                logPingStatus('error', `URL: ${url} - ${error.message}`);
+            }
+        }
+    }, PING_INTERVAL);
+
+    // メモリ使用状況のログ
+    setInterval(() => {
+        const used = process.memoryUsage();
+        console.log(chalk.cyan(`Memory Usage - RSS: ${Math.round(used.rss / 1024 / 1024)}MB, Heap: ${Math.round(used.heapUsed / 1024 / 1024)}MB`));
     }, PING_INTERVAL);
 }
 
@@ -247,17 +291,25 @@ app.get('/metrics', (req, res) => {
     }
 });
 
+// ヘルスチェックエンドポイントの強化
 app.get('/health', (req, res) => {
     try {
         const health = {
             status: 'ok',
+            timestamp: Date.now(),
             uptime: process.uptime(),
-            timestamp: Date.now()
+            memory: process.memoryUsage(),
+            cpu: os.cpus()[0].times,
+            loadavg: os.loadavg()
         };
         res.status(200).json(health);
     } catch (error) {
         console.error('Error checking health:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ 
+            status: 'error',
+            timestamp: Date.now(),
+            error: error.message 
+        });
     }
 });
 
