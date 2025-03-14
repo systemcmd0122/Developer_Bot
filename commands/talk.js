@@ -3,6 +3,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const fs = require('fs');
 const path = require('path');
 const chalk = require('chalk');
+const archiver = require('archiver');
 
 // Gemini APIの設定
 const API_KEY = process.env.GEMINI_API_KEY;
@@ -17,88 +18,6 @@ const HISTORY_DIR = path.join(__dirname, '..', 'data', 'conversations');
 if (!fs.existsSync(HISTORY_DIR)) {
     fs.mkdirSync(HISTORY_DIR, { recursive: true });
 }
-
-// システムプロンプトの定義
-const SYSTEM_PROMPT = {
-    role: "system",
-    parts: [{
-        text: `あなたはDiscordのゲーム鯖(Game Server)で稼働しているDeveloper Botです。
-バージョン：1.1.0
-作成日：2024年
-開発者：systemcmd0122
-
-【基本設定】
-- 名前：Developer Bot
-- 役割：ゲームサーバーの管理・支援Bot
-- プラットフォーム：Discord
-- サーバー名：Game Server
-
-【主な機能と責任】
-1. ゲーム関連サポート
-   - ゲームに関する質問への回答
-   - ゲームのメカニクス説明
-   - 攻略情報の提供
-   - マルチプレイの調整支援
-
-2. サーバー管理支援
-   - メンバー管理補助
-   - ロール管理
-   - チャンネル管理支援
-   - イベント管理
-
-3. 技術サポート
-   - Discord機能の説明
-   - Bot関連の技術的支援
-   - ゲーム関連の技術的問題解決
-   - サーバー設定のガイド
-
-4. コミュニティ支援
-   - メンバー間の交流促進
-   - ゲーム募集の補助
-   - イベント企画支援
-   - 情報共有の補助
-
-【行動規範】
-1. 言葉遣い
-   - フレンドリーで親しみやすい口調
-   - 敬語と友好的な表現の適切な使い分け
-   - ゲーマー用語を理解し適切に使用
-   - 絵文字を適度に使用した親しみやすい表現
-
-2. 情報提供
-   - 正確な情報のみを提供
-   - 不確かな情報は明確にその旨を伝える
-   - 機密情報は開示しない
-   - サーバールールに則った情報提供
-
-3. 対話姿勢
-   - 質問に対する丁寧な回答
-   - 積極的なサポート提案
-   - 問題解決志向のアプローチ
-   - ユーザーの理解度に合わせた説明
-
-【制約事項】
-1. 禁止事項
-   - 不適切なコンテンツの共有
-   - 差別的な発言
-   - 個人情報の取り扱い
-   - サーバールール違反の助長
-
-2. セキュリティ
-   - 機密情報の保護
-   - 個人情報の保護
-   - 適切な権限管理
-   - セキュリティ関連の慎重な対応
-
-【特記事項】
-- 24時間365日稼働
-- 自動更新機能あり
-- エラー自動報告システム搭載
-- 定期的なバックアップ実施
-
-これらの特徴と制約を理解した上で、Game ServerのDeveloper Botとして適切に応答してください。`
-    }]
-};
 
 module.exports = {
     category: 'ユーティリティ',
@@ -134,7 +53,11 @@ module.exports = {
                             { name: '自分の履歴をエクスポート', value: 'export' },
                             { name: '履歴をリセット', value: 'reset' }
                         ))
-        ),
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('export-all')
+                .setDescription('全ユーザーの会話履歴をエクスポートします（管理者のみ）')),
 
     // 履歴ファイルパスを取得
     getUserHistoryPath(userId, channelId) {
@@ -157,22 +80,22 @@ module.exports = {
 
     // 履歴を保存
     saveHistory(historyPath, history) {
-        try {
-            fs.writeFileSync(historyPath, JSON.stringify(history, null, 2), 'utf8');
-        } catch (error) {
-            console.error(chalk.red('✗ Error saving conversation history:'), error);
-        }
+        fs.writeFileSync(historyPath, JSON.stringify(history, null, 2), 'utf8');
     },
 
-    async handleChatCommand(interaction) {
+    // チャンネルメッセージを処理する関数
+    async processMessage(message) {
+        if (message.author.bot) return;
+        if (message.channel.id !== DEDICATED_CHANNEL_ID) return;
+        
         try {
-            const userInput = interaction.options.getString('message');
-            const isPrivate = interaction.options.getBoolean('private') || false;
+            const userInput = message.content.trim();
+            if (!userInput) return;
             
-            await interaction.deferReply({ ephemeral: isPrivate });
-            
-            const historyPath = this.getUserHistoryPath(interaction.user.id, interaction.channel.id);
+            const historyPath = this.getUserHistoryPath(message.author.id, message.channel.id);
             let history = this.loadHistory(historyPath);
+            
+            await message.channel.sendTyping();
             
             const model = genAI.getGenerativeModel({ 
                 model: "gemini-2.0-flash",
@@ -184,82 +107,70 @@ module.exports = {
                 }
             });
             
-            // チャットの初期化時にシステムプロンプトを設定
             const chat = model.startChat({
-                history: [
-                    SYSTEM_PROMPT,
-                    ...history.map(msg => ({
-                        role: msg.role,
-                        parts: [{ text: msg.parts[0].text }]
-                    }))
-                ]
+                history: history.map(msg => ({
+                    role: msg.role,
+                    parts: [{ text: msg.parts[0].text }]
+                }))
             });
             
-            // ユーザーのメッセージを履歴に追加
             history.push({
                 role: "user",
                 parts: [{ text: userInput }],
                 timestamp: new Date().toISOString(),
-                userId: interaction.user.id,
-                username: interaction.user.username
+                userId: message.author.id,
+                username: message.author.username
             });
             
-            // AIからの応答を取得
             const result = await chat.sendMessage(userInput);
             const responseText = result.response.text();
             
-            // AIの応答を履歴に追加
             history.push({
                 role: "model",
                 parts: [{ text: responseText }],
                 timestamp: new Date().toISOString()
             });
             
-            // 履歴が長すぎる場合は古いものを削除
             if (history.length > 40) {
                 history = history.slice(history.length - 40);
             }
             
-            // 履歴を保存
             this.saveHistory(historyPath, history);
             
-            // 応答用のEmbedを作成
-            const embed = new EmbedBuilder()
-                .setColor('#4285F4')
-                .setTitle('Developer Bot Response')
-                .setDescription(responseText)
-                .addFields([
-                    { 
-                        name: 'Server', 
-                        value: 'Game Server', 
-                        inline: true 
-                    },
-                    { 
-                        name: 'Mode', 
-                        value: isPrivate ? '🔒 Private' : '🌐 Public', 
-                        inline: true 
+            if (responseText.length <= 2000) {
+                await message.reply(responseText);
+            } else {
+                const chunks = splitMessage(responseText);
+                for (let i = 0; i < chunks.length; i++) {
+                    if (i === 0) {
+                        await message.reply(chunks[i]);
+                    } else {
+                        await message.channel.send(chunks[i]);
                     }
-                ])
-                .setFooter({ 
-                    text: `Game Server Developer Bot v1.1.0 | ${new Date().toISOString()}`,
-                    iconURL: interaction.client.user.displayAvatarURL()
-                })
-                .setTimestamp();
-
-            // 応答を送信
-            await interaction.editReply({
-                embeds: [embed],
-                ephemeral: isPrivate
-            });
+                }
+            }
             
-            console.log(chalk.green(`✓ AI Response: Responded to ${interaction.user.username} in #${interaction.channel.name}`));
+            console.log(chalk.green(`✓ AI Response: Responded to ${message.author.username} in #${message.channel.name}`));
             
         } catch (error) {
-            console.error(chalk.red('✗ Error in AI command:'), error);
-            await interaction.editReply({
-                content: 'AIの応答中にエラーが発生しました。後でもう一度お試しください。',
-                ephemeral: true
-            });
+            console.error(chalk.red('✗ Error in AI response:'), error);
+            await message.reply('申し訳ありません、AIの応答中にエラーが発生しました。後でもう一度お試しください。');
+        }
+    },
+
+    async execute(interaction) {
+        const subcommand = interaction.options.getSubcommand();
+
+        switch (subcommand) {
+            case 'chat':
+                await this.handleChatCommand(interaction);
+                break;
+            case 'history':
+                await this.handleHistoryCommand(interaction);
+                break;
+            case 'export-all':
+                await this.handleExportAllCommand(interaction);
+                break;
         }
     },
 
@@ -280,6 +191,59 @@ module.exports = {
         }
     },
 
+    async handleExportAllCommand(interaction) {
+        // 管理者ロールチェック
+        if (!interaction.member.roles.cache.has(ADMIN_ROLE_ID)) {
+            await interaction.reply({
+                content: 'このコマンドを実行する権限がありません。',
+                ephemeral: true
+            });
+            return;
+        }
+
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+            // 一時的なZIPファイルのパス
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const zipPath = path.join(HISTORY_DIR, `all_history_${timestamp}.zip`);
+            const output = fs.createWriteStream(zipPath);
+            const archive = archiver('zip', { zlib: { level: 9 } });
+
+            output.on('close', async () => {
+                await interaction.editReply({
+                    content: '全ての会話履歴をエクスポートしました。',
+                    files: [{
+                        attachment: zipPath,
+                        name: `all_history_${timestamp}.zip`
+                    }]
+                });
+
+                // クリーンアップ
+                fs.unlinkSync(zipPath);
+            });
+
+            archive.on('error', (err) => {
+                throw err;
+            });
+
+            archive.pipe(output);
+
+            // conversationsディレクトリ内の全JSONファイルを追加
+            const files = fs.readdirSync(HISTORY_DIR).filter(file => file.endsWith('.json'));
+            for (const file of files) {
+                const filePath = path.join(HISTORY_DIR, file);
+                archive.file(filePath, { name: file });
+            }
+
+            await archive.finalize();
+
+        } catch (error) {
+            console.error(chalk.red('✗ Error exporting all history:'), error);
+            await interaction.editReply('履歴のエクスポート中にエラーが発生しました。');
+        }
+    },
+
     async viewHistory(interaction, historyPath) {
         await interaction.deferReply({ ephemeral: true });
         const history = this.loadHistory(historyPath);
@@ -292,28 +256,18 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setTitle('会話履歴')
             .setColor('#4285F4')
-            .setDescription('最新の会話履歴を表示しています')
-            .setFooter({ 
-                text: 'Game Server Developer Bot',
-                iconURL: interaction.client.user.displayAvatarURL()
-            })
-            .setTimestamp();
+            .setFooter({ text: '最新の10件を表示しています' });
 
-        const recentHistory = history.slice(-10);
+        const recentHistory = history.slice(-20);
+        
         for (let i = 0; i < recentHistory.length; i += 2) {
             const userMsg = recentHistory[i];
             const aiMsg = recentHistory[i + 1];
             
             if (userMsg && aiMsg) {
                 embed.addFields(
-                    { 
-                        name: `👤 ${userMsg.username} (${new Date(userMsg.timestamp).toLocaleString()})`,
-                        value: userMsg.parts[0].text.substring(0, 1024)
-                    },
-                    { 
-                        name: `🤖 Developer Bot (${new Date(aiMsg.timestamp).toLocaleString()})`,
-                        value: aiMsg.parts[0].text.substring(0, 1024)
-                    }
+                    { name: `💬 あなた (${i/2 + 1})`, value: userMsg.parts[0].text.substring(0, 1024) },
+                    { name: '🤖 AI', value: aiMsg.parts[0].text.substring(0, 1024) }
                 );
             }
         }
@@ -344,53 +298,145 @@ module.exports = {
     },
 
     async resetHistory(interaction, historyPath) {
-        try {
-            if (fs.existsSync(historyPath)) {
-                fs.unlinkSync(historyPath);
-                await interaction.reply({ 
-                    content: '会話履歴をリセットしました。',
-                    ephemeral: true 
-                });
-            } else {
-                await interaction.reply({ 
-                    content: 'リセットする会話履歴はありません。',
-                    ephemeral: true 
-                });
-            }
-        } catch (error) {
-            console.error(chalk.red('✗ Error resetting history:'), error);
-            await interaction.reply({ 
-                content: '履歴のリセット中にエラーが発生しました。',
-                ephemeral: true 
-            });
+        if (fs.existsSync(historyPath)) {
+            fs.unlinkSync(historyPath);
+            await interaction.reply({ content: '会話履歴をリセットしました。', ephemeral: true });
+        } else {
+            await interaction.reply({ content: 'リセットする会話履歴はありません。', ephemeral: true });
         }
     },
 
-    async execute(interaction) {
-        const subcommand = interaction.options.getSubcommand();
-        
+    async handleChatCommand(interaction) {
         try {
-            switch (subcommand) {
-                case 'chat':
-                    await this.handleChatCommand(interaction);
-                    break;
-                case 'history':
-                    await this.handleHistoryCommand(interaction);
-                    break;
-                default:
-                    await interaction.reply({ 
-                        content: '無効なサブコマンドです。',
-                        ephemeral: true 
-                    });
+            const userInput = interaction.options.getString('message');
+            const isPrivate = interaction.options.getBoolean('private') || false;
+            
+            await interaction.deferReply({ ephemeral: isPrivate });
+            
+            const historyPath = this.getUserHistoryPath(interaction.user.id, interaction.channel.id);
+            let history = this.loadHistory(historyPath);
+            
+            const model = genAI.getGenerativeModel({ 
+                model: "gemini-2.0-flash",
+                generationConfig: {
+                    temperature: 0.7,
+                    topK: 40,
+                    topP: 0.95,
+                    maxOutputTokens: 2048,
+                }
+            });
+            
+            const chat = model.startChat({
+                history: history.map(msg => ({
+                    role: msg.role,
+                    parts: [{ text: msg.parts[0].text }]
+                }))
+            });
+            
+            history.push({
+                role: "user",
+                parts: [{ text: userInput }],
+                timestamp: new Date().toISOString(),
+                userId: interaction.user.id,
+                username: interaction.user.username
+            });
+            
+            const result = await chat.sendMessage(userInput);
+            const responseText = result.response.text();
+            
+            history.push({
+                role: "model",
+                parts: [{ text: responseText }],
+                timestamp: new Date().toISOString()
+            });
+            
+            if (history.length > 40) {
+                history = history.slice(history.length - 40);
             }
-        } catch (error) {
-            console.error(chalk.red('✗ Error executing command:'), error);
-            if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({ 
-                    content: 'コマンドの実行中にエラーが発生しました。',
-                    ephemeral: true 
+            
+            this.saveHistory(historyPath, history);
+            
+            let embed;
+            if (!isPrivate) {
+                embed = new EmbedBuilder()
+                    .setTitle('AIとの会話')
+                    .addFields(
+                        { name: '💬 あなたの質問', value: userInput },
+                        { name: '🤖 AIの回答', value: responseText.length > 1024 ? responseText.substring(0, 1021) + '...' : responseText }
+                    )
+                    .setColor('#4285F4')
+                    .setFooter({ text: 'Powered by Google Gemini API' })
+                    .setTimestamp();
+            }
+            
+            if (responseText.length <= 2000) {
+                await interaction.editReply({
+                    content: isPrivate ? responseText : null,
+                    embeds: isPrivate ? [] : [embed]
                 });
+            } else {
+                const chunks = splitMessage(responseText);
+                
+                if (isPrivate) {
+                    await interaction.editReply(chunks[0]);
+                    for (let i = 1; i < chunks.length; i++) {
+                        await interaction.followUp({ content: chunks[i], ephemeral: true });
+                    }
+                } else {
+                    await interaction.editReply({ embeds: [embed] });
+                    for (const chunk of chunks) {
+                        await interaction.followUp({ content: chunk, ephemeral: isPrivate });
+                    }
+                }
+            }
+            
+            console.log(chalk.green(`✓ AI Command: Responded to ${interaction.user.username} in #${interaction.channel.name}`));
+            
+        } catch (error) {
+            console.error(chalk.red('✗ Error in AI command:'), error);
+            if (interaction.deferred) {
+                await interaction.editReply('申し訳ありません、AIの応答中にエラーが発生しました。後でもう一度お試しください。');
+            } else {
+                await interaction.reply({ content: 'エラーが発生しました。', ephemeral: true });
             }
         }
     }
 };
+
+// メッセージを分割する関数
+function splitMessage(text, maxLength = 2000) {
+    const chunks = [];
+    let currentChunk = '';
+    
+    const paragraphs = text.split('\n\n');
+    
+    for (const paragraph of paragraphs) {
+        if (paragraph.length > maxLength) {
+            const sentences = paragraph.split(/(?<=\. )/);
+            
+            for (const sentence of sentences) {
+                if (currentChunk.length + sentence.length + 1 > maxLength) {
+                    chunks.push(currentChunk);
+                    currentChunk = sentence;
+                } else {
+                    currentChunk += (currentChunk ? ' ' : '') + sentence;
+                }
+            }
+        } else if (currentChunk.length + paragraph.length + 2 > maxLength) {
+            chunks.push(currentChunk);
+            currentChunk = paragraph;
+        } else {
+            if (currentChunk) {
+                currentChunk += '\n\n' + paragraph;
+            } else {
+                currentChunk = paragraph;
+            }
+        }
+    }
+    
+    if (currentChunk) {
+        chunks.push(currentChunk);
+    }
+    
+    return chunks;
+}
