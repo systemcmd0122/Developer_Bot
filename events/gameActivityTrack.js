@@ -3,13 +3,11 @@ const chalk = require('chalk');
 const fs = require('fs').promises;
 const path = require('path');
 
-// 設定ファイルのパス
 const SETTINGS_FILE = path.join(__dirname, '..', 'data', 'activitySettings.json');
-const EXCLUDED_ROLE_ID = '1331212375969366056'; // 通知を除外するロールID
-const NOTIFICATION_COOLDOWN = 5000; // 通知のクールダウン時間（ミリ秒）
+const EXCLUDED_ROLE_ID = '1331212375969366056';
+const NOTIFICATION_COOLDOWN = 5000;
 const lastNotificationMap = new Map();
 
-// 設定を読み込む
 async function loadSettings() {
     try {
         await fs.access(SETTINGS_FILE);
@@ -17,7 +15,6 @@ async function loadSettings() {
         return JSON.parse(data);
     } catch (error) {
         if (error.code === 'ENOENT') {
-            // ファイルが存在しない場合は空のオブジェクトを返す
             await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
             await fs.writeFile(SETTINGS_FILE, '{}', 'utf8');
             return {};
@@ -27,7 +24,6 @@ async function loadSettings() {
     }
 }
 
-// 設定を保存する
 async function saveSettings(settings) {
     try {
         await fs.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2), 'utf8');
@@ -37,7 +33,6 @@ async function saveSettings(settings) {
     }
 }
 
-// 通知のクールダウンをチェック
 function checkNotificationCooldown(userId, activityType) {
     const key = `${userId}-${activityType}`;
     const lastNotification = lastNotificationMap.get(key) || 0;
@@ -51,7 +46,6 @@ function checkNotificationCooldown(userId, activityType) {
     return true;
 }
 
-// ゲームアクティビティの通知を送信
 async function sendGameNotification(channel, embed) {
     try {
         await channel.send({ embeds: [embed] });
@@ -62,7 +56,6 @@ async function sendGameNotification(channel, embed) {
     }
 }
 
-// メインのイベントハンドラー
 module.exports = {
     name: Events.PresenceUpdate,
     async execute(oldPresence, newPresence) {
@@ -73,34 +66,28 @@ module.exports = {
                 return;
             }
 
-            // 基本的なチェック
-            if (!newPresence?.user || !newPresence?.member) return;
+                if (!newPresence?.user || !newPresence?.member) return;
             
             const member = newPresence.member;
             
-            // 除外ロールチェック
             if (member.roles.cache.has(EXCLUDED_ROLE_ID)) {
                 return;
             }
 
-            // ユーザーの通知設定を確認
             const settings = await loadSettings();
             if (settings[newPresence.user.id] === false) {
                 return;
             }
 
-            // アクティビティの変更を検出
             const oldGame = oldPresence?.activities?.find(activity => activity.type === 0);
             const newGame = newPresence?.activities?.find(activity => activity.type === 0);
 
-            // 通知用のチャンネルを取得
             const channel = await newPresence.client.channels.fetch(GAME_ACTIVITY_CHANNEL_ID);
             if (!channel) {
                 console.error('Could not find game activity channel');
                 return;
             }
 
-            // ゲーム開始の検出と通知
             if (!oldGame && newGame) {
                 if (!checkNotificationCooldown(newPresence.user.id, 'start')) return;
 
@@ -118,7 +105,6 @@ module.exports = {
                 await sendGameNotification(channel, gameStartEmbed);
                 console.log(chalk.green(`✓ Game Activity: ${member.displayName} started playing ${newGame.name}`));
             }
-            // ゲーム終了の検出と通知
             else if (oldGame && !newGame) {
                 if (!checkNotificationCooldown(newPresence.user.id, 'end')) return;
 
@@ -136,7 +122,6 @@ module.exports = {
                 await sendGameNotification(channel, gameEndEmbed);
                 console.log(chalk.yellow(`✓ Game Activity: ${member.displayName} stopped playing ${oldGame.name}`));
             }
-            // ゲーム切り替えの検出と通知
             else if (oldGame && newGame && oldGame.name !== newGame.name) {
                 if (!checkNotificationCooldown(newPresence.user.id, 'switch')) return;
 

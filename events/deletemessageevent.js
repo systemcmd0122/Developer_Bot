@@ -5,7 +5,6 @@ module.exports = {
     name: Events.MessageCreate,
     async execute(message) {
         try {
-            // m!から始まるメッセージの処理（10秒後に削除）
             if (message.content.startsWith('m!')) {
                 console.log(chalk.blue(`Auto delete scheduled for m! message from ${message.author.tag}`));
                 setTimeout(async () => {
@@ -15,11 +14,10 @@ module.exports = {
                     } catch (error) {
                         console.error(chalk.red('✗ Error deleting m! message:'), error);
                     }
-                }, 10000); // 10秒
+                }, 10000);
                 return;
             }
 
-            // 特定のボットのメッセージの処理（20秒後に削除）
             const TARGET_BOT_IDS = [
                 '411916947773587456', //Jockie Music
                 '916300992612540467', //VOICEVOX読み上げbot
@@ -34,7 +32,7 @@ module.exports = {
                     } catch (error) {
                         console.error(chalk.red('✗ Error deleting bot message:'), error);
                     }
-                }, 20000); // 20秒
+                }, 20000);
             }
         } catch (error) {
             console.error(chalk.red('✗ Error in message create event:'), error);

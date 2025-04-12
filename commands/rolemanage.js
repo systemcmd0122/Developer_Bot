@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs').promises;
 const path = require('path');
+const supabase = require('../utils/supabase');
 
 // 保存ディレクトリのパスを設定
 const SAVE_DIR = path.join(process.cwd(), 'data', 'roleboards');
@@ -116,9 +117,18 @@ module.exports = {
         // 保存ディレクトリの作成を確認
         await this.ensureSaveDirectory();
 
+        // メモリキャッシュを初期化
+        if (!interaction.client.roleBoards) {
+            interaction.client.roleBoards = {};
+        }
+        
+        // このギルドのロールボードを初期化
         const serverRoleBoards = interaction.client.roleBoards;
         if (!interaction.client.roleBoards[interaction.guildId]) {
             interaction.client.roleBoards[interaction.guildId] = {};
+            
+            // 初回実行時にSupabaseからデータをロード
+            await this.loadRoleBoardsFromDB(interaction);
         }
 
         const subcommand = interaction.options.getSubcommand();
@@ -152,6 +162,26 @@ module.exports = {
                     roles: {},
                     description: description
                 };
+
+                // Supabaseにボードを保存
+                const { data: boardData, error: boardError } = await supabase
+                    .from('role_boards')
+                    .insert({
+                        guild_id: interaction.guildId,
+                        board_name: name,
+                        message_id: message.id,
+                        channel_id: interaction.channel.id,
+                        description: description
+                    })
+                    .select('id');
+
+                if (boardError) {
+                    console.error('ロールボード作成エラー:', boardError);
+                    return interaction.reply({
+                        content: 'ロールボードの作成中にエラーが発生しました。',
+                        ephemeral: true
+                    });
+                }
 
                 return interaction.reply({
                     content: `ロールボード「${name}」を作成しました。`,
@@ -241,6 +271,45 @@ module.exports = {
                         roles: saveData.roles
                     };
 
+                    // Supabaseにボードを保存
+                    const { data: boardData, error: boardError } = await supabase
+                        .from('role_boards')
+                        .insert({
+                            guild_id: interaction.guildId,
+                            board_name: saveData.boardName,
+                            message_id: message.id,
+                            channel_id: interaction.channel.id,
+                            description: saveData.description
+                        })
+                        .select('id');
+
+                    if (boardError) {
+                        console.error('ロールボード作成エラー:', boardError);
+                        return interaction.reply({
+                            content: 'ロールボードの作成中にエラーが発生しました。',
+                            ephemeral: true
+                        });
+                    }
+
+                    // ボードIDを取得
+                    const boardId = boardData[0].id;
+
+                    // ロールも保存
+                    for (const [roleId, roleData] of Object.entries(saveData.roles)) {
+                        const { error: roleError } = await supabase
+                            .from('role_board_roles')
+                            .insert({
+                                board_id: boardId,
+                                role_id: roleId,
+                                role_name: roleData.name,
+                                description: roleData.description
+                            });
+
+                        if (roleError) {
+                            console.error('ロール保存エラー:', roleError);
+                        }
+                    }
+
                     // ボードを更新
                     await this.updateRoleBoard(interaction, saveData.boardName);
 
@@ -282,6 +351,41 @@ module.exports = {
                     description: description
                 };
 
+                // Supabaseにロールを保存
+                // まず対応するボードIDを取得
+                const { data: boardData, error: boardError } = await supabase
+                    .from('role_boards')
+                    .select('id')
+                    .eq('guild_id', interaction.guildId)
+                    .eq('board_name', boardName)
+                    .single();
+
+                if (boardError) {
+                    console.error('ロールボード検索エラー:', boardError);
+                    return interaction.reply({
+                        content: 'ロールの追加中にエラーが発生しました。',
+                        ephemeral: true
+                    });
+                }
+
+                // ロールを保存
+                const { error: roleError } = await supabase
+                    .from('role_board_roles')
+                    .insert({
+                        board_id: boardData.id,
+                        role_id: role.id,
+                        role_name: role.name,
+                        description: description
+                    });
+
+                if (roleError) {
+                    console.error('ロール追加エラー:', roleError);
+                    return interaction.reply({
+                        content: 'ロールの追加中にエラーが発生しました。',
+                        ephemeral: true
+                    });
+                }
+
                 await this.updateRoleBoard(interaction, boardName);
 
                 return interaction.reply({
@@ -310,6 +414,38 @@ module.exports = {
                 }
 
                 delete board.roles[role.id];
+
+                // Supabaseからロールを削除
+                // まず対応するボードIDを取得
+                const { data: boardData, error: boardError } = await supabase
+                    .from('role_boards')
+                    .select('id')
+                    .eq('guild_id', interaction.guildId)
+                    .eq('board_name', boardName)
+                    .single();
+
+                if (boardError) {
+                    console.error('ロールボード検索エラー:', boardError);
+                    return interaction.reply({
+                        content: 'ロールの削除中にエラーが発生しました。',
+                        ephemeral: true
+                    });
+                }
+
+                // ロールを削除
+                const { error: roleError } = await supabase
+                    .from('role_board_roles')
+                    .delete()
+                    .eq('board_id', boardData.id)
+                    .eq('role_id', role.id);
+
+                if (roleError) {
+                    console.error('ロール削除エラー:', roleError);
+                    return interaction.reply({
+                        content: 'ロールの削除中にエラーが発生しました。',
+                        ephemeral: true
+                    });
+                }
 
                 await this.updateRoleBoard(interaction, boardName);
 
@@ -368,6 +504,36 @@ module.exports = {
                     console.error('メッセージ削除中にエラーが発生:', error);
                 }
 
+                // Supabaseからボードを削除
+                const { data: boardData, error: boardError } = await supabase
+                    .from('role_boards')
+                    .select('id')
+                    .eq('guild_id', interaction.guildId)
+                    .eq('board_name', name)
+                    .single();
+
+                if (!boardError && boardData) {
+                    // 関連するロールを削除（CASCADE設定があるため不要だが、念のため）
+                    const { error: roleError } = await supabase
+                        .from('role_board_roles')
+                        .delete()
+                        .eq('board_id', boardData.id);
+
+                    if (roleError) {
+                        console.error('ロール削除エラー:', roleError);
+                    }
+
+                    // ボードを削除
+                    const { error: deleteBoardError } = await supabase
+                        .from('role_boards')
+                        .delete()
+                        .eq('id', boardData.id);
+
+                    if (deleteBoardError) {
+                        console.error('ボード削除エラー:', deleteBoardError);
+                    }
+                }
+
                 delete serverRoleBoards[interaction.guildId][name];
 
                 return interaction.reply({
@@ -384,6 +550,57 @@ module.exports = {
         } catch (error) {
             // ディレクトリが存在しない場合は作成
             await fs.mkdir(SAVE_DIR, { recursive: true });
+        }
+    },
+
+    // Supabaseからデータをロードする関数
+    async loadRoleBoardsFromDB(interaction) {
+        try {
+            const guildId = interaction.guildId;
+            
+            // ボード情報を読み込む
+            const { data: boardsData, error: boardsError } = await supabase
+                .from('role_boards')
+                .select('*')
+                .eq('guild_id', guildId);
+
+            if (boardsError) {
+                console.error('ロールボード読み込みエラー:', boardsError);
+                return;
+            }
+
+            // メモリキャッシュに設定
+            for (const board of boardsData) {
+                interaction.client.roleBoards[guildId][board.board_name] = {
+                    messageId: board.message_id,
+                    channelId: board.channel_id,
+                    description: board.description || '',
+                    roles: {}
+                };
+
+                // 各ボードのロールを読み込む
+                const { data: rolesData, error: rolesError } = await supabase
+                    .from('role_board_roles')
+                    .select('*')
+                    .eq('board_id', board.id);
+
+                if (rolesError) {
+                    console.error(`ロール読み込みエラー (Board ID: ${board.id}):`, rolesError);
+                    continue;
+                }
+
+                // ロールデータを設定
+                for (const role of rolesData) {
+                    interaction.client.roleBoards[guildId][board.board_name].roles[role.role_id] = {
+                        name: role.role_name,
+                        description: role.description || '説明なし'
+                    };
+                }
+            }
+
+            console.log(`✓ ロールボードデータをロードしました (Guild ID: ${guildId})`);
+        } catch (error) {
+            console.error('ロールボードデータロードエラー:', error);
         }
     },
 

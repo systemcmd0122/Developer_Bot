@@ -1,11 +1,10 @@
-// interactions.js - インタラクションデータの永続化を管理
 const fs = require('fs');
 const path = require('path');
+const supabase = require('../utils/supabase');
 
 class InteractionManager {
     constructor(client) {
         this.client = client;
-        // データの保存先を../dataに修正
         this.dataPath = path.join(__dirname, '..', 'data', 'interactions.json');
         this.interactions = {
             buttons: {},
@@ -15,27 +14,43 @@ class InteractionManager {
         this.loadInteractions();
     }
 
-    // インタラクションデータをファイルから読み込む
-    loadInteractions() {
+    async loadInteractions() {
         try {
-            // データディレクトリの作成を確認
-            const dataDir = path.dirname(this.dataPath);
-            if (!fs.existsSync(dataDir)) {
-                fs.mkdirSync(dataDir, { recursive: true });
+            const { data, error } = await supabase
+                .from('interactions')
+                .select('message_id, type, data');
+
+            if (error) {
+                console.error('Error loading interactions from Supabase:', error);
+                return;
             }
 
-            if (fs.existsSync(this.dataPath)) {
-                const data = fs.readFileSync(this.dataPath, 'utf8');
-                this.interactions = JSON.parse(data);
-                console.log('✓ Interactions loaded successfully');
-            } else {
-                // ファイルが存在しない場合は新規作成
-                this.saveInteractions();
-                console.log('✓ Created new interactions file');
+            // リセットして新しく読み込む
+            this.interactions = {
+                buttons: {},
+                menus: {},
+                boards: {}
+            };
+
+            for (const item of data) {
+                const { message_id, type, data: itemData } = item;
+                
+                switch (type) {
+                    case 'button':
+                        this.interactions.buttons[message_id] = itemData;
+                        break;
+                    case 'menu':
+                        this.interactions.menus[message_id] = itemData;
+                        break;
+                    case 'board':
+                        this.interactions.boards[message_id] = itemData;
+                        break;
+                }
             }
+
+            console.log('✓ Interactions loaded successfully from Supabase');
         } catch (error) {
             console.error('Error loading interactions:', error);
-            // エラーが発生した場合でもデフォルト構造を維持
             this.interactions = {
                 buttons: {},
                 menus: {},
@@ -44,71 +59,118 @@ class InteractionManager {
         }
     }
 
-    // インタラクションデータをファイルに保存
-    saveInteractions() {
-        try {
-            // データディレクトリの存在を確認し、必要に応じて作成
-            const dataDir = path.dirname(this.dataPath);
-            if (!fs.existsSync(dataDir)) {
-                fs.mkdirSync(dataDir, { recursive: true });
-            }
-
-            // データを整形して保存
-            const dataToSave = JSON.stringify(this.interactions, null, 2);
-            fs.writeFileSync(this.dataPath, dataToSave, 'utf8');
-        } catch (error) {
-            console.error('Error saving interactions:', error);
-            throw error; // エラーを上位に伝播させる
-        }
-    }
-
-    // ボタンインタラクションを保存
-    saveButtonInteraction(messageId, buttonData) {
+    async saveButtonInteraction(messageId, buttonData) {
         if (!messageId || !buttonData) {
             throw new Error('Invalid button interaction data');
         }
-        this.interactions.buttons[messageId] = buttonData;
-        this.saveInteractions();
+        
+        try {
+            this.interactions.buttons[messageId] = buttonData;
+            
+            // Supabaseにデータを保存（upsert）
+            const { error } = await supabase
+                .from('interactions')
+                .upsert(
+                    {
+                        message_id: messageId,
+                        type: 'button',
+                        data: buttonData,
+                        guild_id: buttonData.guildId || 'unknown',
+                        updated_at: new Date()
+                    },
+                    { onConflict: 'message_id,type' }
+                );
+
+            if (error) {
+                console.error('Error saving button interaction to Supabase:', error);
+                throw error;
+            }
+        } catch (error) {
+            console.error('Error in saveButtonInteraction:', error);
+            throw error;
+        }
     }
 
-    // メニューインタラクションを保存
-    saveMenuInteraction(messageId, menuData) {
+    async saveMenuInteraction(messageId, menuData) {
         if (!messageId || !menuData) {
             throw new Error('Invalid menu interaction data');
         }
-        this.interactions.menus[messageId] = menuData;
-        this.saveInteractions();
+        
+        try {
+            this.interactions.menus[messageId] = menuData;
+            
+            // Supabaseにデータを保存（upsert）
+            const { error } = await supabase
+                .from('interactions')
+                .upsert(
+                    {
+                        message_id: messageId,
+                        type: 'menu',
+                        data: menuData,
+                        guild_id: menuData.guildId || 'unknown',
+                        updated_at: new Date()
+                    },
+                    { onConflict: 'message_id,type' }
+                );
+
+            if (error) {
+                console.error('Error saving menu interaction to Supabase:', error);
+                throw error;
+            }
+        } catch (error) {
+            console.error('Error in saveMenuInteraction:', error);
+            throw error;
+        }
     }
 
-    // ボード情報を保存
-    saveBoardInteraction(messageId, boardData) {
+    async saveBoardInteraction(messageId, boardData) {
         if (!messageId || !boardData) {
             throw new Error('Invalid board interaction data');
         }
-        this.interactions.boards[messageId] = boardData;
-        this.saveInteractions();
+        
+        try {
+            this.interactions.boards[messageId] = boardData;
+            
+            // Supabaseにデータを保存（upsert）
+            const { error } = await supabase
+                .from('interactions')
+                .upsert(
+                    {
+                        message_id: messageId,
+                        type: 'board',
+                        data: boardData,
+                        guild_id: boardData.guildId || 'unknown',
+                        updated_at: new Date()
+                    },
+                    { onConflict: 'message_id,type' }
+                );
+
+            if (error) {
+                console.error('Error saving board interaction to Supabase:', error);
+                throw error;
+            }
+        } catch (error) {
+            console.error('Error in saveBoardInteraction:', error);
+            throw error;
+        }
     }
 
-    // ボタンインタラクションを取得
     getButtonInteraction(messageId) {
         if (!messageId) return null;
         return this.interactions.buttons[messageId] || null;
     }
 
-    // メニューインタラクションを取得
     getMenuInteraction(messageId) {
         if (!messageId) return null;
         return this.interactions.menus[messageId] || null;
     }
 
-    // ボード情報を取得
     getBoardInteraction(messageId) {
         if (!messageId) return null;
         return this.interactions.boards[messageId] || null;
     }
 
-    // インタラクションを削除
-    removeInteraction(messageId) {
+    async removeInteraction(messageId) {
         if (!messageId) return;
 
         let modified = false;
@@ -126,12 +188,19 @@ class InteractionManager {
         }
 
         if (modified) {
-            this.saveInteractions();
+            // Supabaseから該当のデータを削除
+            const { error } = await supabase
+                .from('interactions')
+                .delete()
+                .eq('message_id', messageId);
+
+            if (error) {
+                console.error('Error removing interaction from Supabase:', error);
+            }
         }
     }
 
-    // すべてのインタラクションを取得
-    getAllInteractions() {
+    async getAllInteractions() {
         return {
             buttons: { ...this.interactions.buttons },
             menus: { ...this.interactions.menus },
@@ -139,11 +208,106 @@ class InteractionManager {
         };
     }
 
-    // 古いインタラクションをクリーンアップ（オプション）
-    cleanup(maxAge = 24 * 60 * 60 * 1000) { // デフォルト24時間
+    async getBoardList(guildId = null) {
+        try {
+            let query = supabase
+                .from('friend_code_boards')
+                .select('message_id, guild_id, channel_id, title, description');
+            
+            if (guildId) {
+                query = query.eq('guild_id', guildId);
+            }
+            
+            const { data, error } = await query;
+            
+            if (error) {
+                console.error('エラー: 掲示板リスト取得:', error);
+                return [];
+            }
+            
+            return data;
+        } catch (error) {
+            console.error('エラー: 掲示板リスト取得処理:', error);
+            return [];
+        }
+    }
+    
+    async updateBoardContent(messageId, newTitle, newDescription) {
+        try {
+            if (!this.interactions.boards[messageId]) {
+                throw new Error('指定された掲示板が見つかりません');
+            }
+            
+            // メモリ内のデータを更新
+            this.interactions.boards[messageId].title = newTitle;
+            this.interactions.boards[messageId].description = newDescription;
+            
+            // データベースを更新
+            const { error } = await supabase
+                .from('friend_code_boards')
+                .update({
+                    title: newTitle,
+                    description: newDescription,
+                    updated_at: new Date()
+                })
+                .eq('message_id', messageId);
+                
+            if (error) {
+                console.error('掲示板更新エラー:', error);
+                throw error;
+            }
+            
+            // board interactionも更新
+            const boardData = { ...this.interactions.boards[messageId], title: newTitle, description: newDescription };
+            await this.saveBoardInteraction(messageId, boardData);
+            
+            return true;
+        } catch (error) {
+            console.error('掲示板更新処理エラー:', error);
+            throw error;
+        }
+    }
+    
+    async syncBoards(guildId) {
+        try {
+            // データベースから最新の掲示板情報を取得
+            const { data, error } = await supabase
+                .from('friend_code_boards')
+                .select('*')
+                .eq('guild_id', guildId);
+                
+            if (error) {
+                console.error('掲示板同期エラー:', error);
+                return false;
+            }
+            
+            // メモリキャッシュをリセット
+            if (!this.interactions.boards) {
+                this.interactions.boards = {};
+            }
+            
+            // 掲示板データを更新
+            for (const board of data) {
+                this.interactions.boards[board.message_id] = {
+                    channelId: board.channel_id,
+                    title: board.title,
+                    description: board.description || '',
+                    guildId: board.guild_id
+                };
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('掲示板同期処理エラー:', error);
+            return false;
+        }
+    }
+
+    async cleanup(maxAge = 24 * 60 * 60 * 1000) { 
         const now = Date.now();
         let modified = false;
 
+        // メモリ内のデータを整理
         Object.entries(this.interactions).forEach(([type, interactions]) => {
             Object.entries(interactions).forEach(([id, data]) => {
                 if (data.timestamp && (now - data.timestamp > maxAge)) {
@@ -153,8 +317,15 @@ class InteractionManager {
             });
         });
 
-        if (modified) {
-            this.saveInteractions();
+        // Supabaseのデータは対応する日付フィールドがないため、単純に古いレコードを削除
+        const oneDayAgo = new Date(now - maxAge);
+        const { error } = await supabase
+            .from('interactions')
+            .delete()
+            .lt('updated_at', oneDayAgo.toISOString());
+
+        if (error) {
+            console.error('Error cleaning up interactions in Supabase:', error);
         }
     }
 }
