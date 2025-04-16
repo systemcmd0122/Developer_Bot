@@ -5,7 +5,7 @@ module.exports = {
     name: Events.MessageDelete,
     async execute(message) {
         // 転送先チャンネルのID
-        const LOG_CHANNEL_ID = '1361973547035263027';
+        const LOG_CHANNEL_ID = '1361980143568158901';
 
         try {
             // ボットのメッセージは無視
