@@ -470,8 +470,19 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         }
         else if (interaction.isButton() || interaction.isStringSelectMenu()) {
+            // じゃんけんボタンハンドラー
+            if (interaction.customId.startsWith('janken-')) {
+                const jankenCommand = client.commands.get('janken');
+                if (jankenCommand) {
+                    if (interaction.customId === 'janken-again') {
+                        await jankenCommand.handlePlayAgain(interaction);
+                    } else {
+                        await jankenCommand.handleJankenButton(interaction);
+                    }
+                }
+            }
             // フレンドコードインタラクションハンドラー
-            if (interaction.customId.startsWith('friendcode-')) {
+            else if (interaction.customId.startsWith('friendcode-')) {
                 const friendCodeCommand = client.commands.get('friendcode');
                 if (friendCodeCommand && friendCodeCommand.handleInteraction) {
                     await friendCodeCommand.handleInteraction(interaction);
