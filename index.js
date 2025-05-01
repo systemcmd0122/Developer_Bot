@@ -139,7 +139,6 @@ const client = new Client({
 
 // Global data stores with persistence
 client.commands = new Collection();
-client.friendCodes = {};
 client.roleBoards = {};
 client.userPreferences = {};
 client.startTime = Date.now();
@@ -481,13 +480,6 @@ client.on(Events.InteractionCreate, async interaction => {
                     }
                 }
             }
-            // フレンドコードインタラクションハンドラー
-            else if (interaction.customId.startsWith('friendcode-')) {
-                const friendCodeCommand = client.commands.get('friendcode');
-                if (friendCodeCommand && friendCodeCommand.handleInteraction) {
-                    await friendCodeCommand.handleInteraction(interaction);
-                }
-            }
             // ロール管理ボタンハンドラー
             else if (interaction.customId.startsWith('role-')) {
                 const roleManageCommand = client.commands.get('rolemanage');
@@ -596,17 +588,6 @@ client.on('reconnecting', () => {
         
         await client.login(process.env.DISCORD_TOKEN);
         console.log(chalk.green('✓ Bot is ready!'));
-
-        // フレンドコードの読み込み
-        try {
-            const friendCodeCommand = client.commands.get('friendcode');
-            if (friendCodeCommand && friendCodeCommand.loadData) {
-                client.friendCodes = friendCodeCommand.loadData(client);
-                console.log(chalk.green('✓ Friend codes loaded successfully'));
-            }
-        } catch (error) {
-            console.error(chalk.red('Error loading friend codes:'), error);
-        }
 
         // Memory usage monitoring
         setInterval(() => {

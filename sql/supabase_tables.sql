@@ -22,43 +22,6 @@ CREATE TABLE activity_settings (
     UNIQUE(user_id)
 );
 
--- フレンドコード用テーブル
-CREATE TABLE friend_codes (
-    id SERIAL PRIMARY KEY,
-    guild_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    game_name TEXT NOT NULL,
-    code TEXT NOT NULL,
-    note TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(guild_id, user_id, game_name)
-);
-
--- フレンドコード掲示板用テーブル
-CREATE TABLE friend_code_boards (
-    id SERIAL PRIMARY KEY,
-    guild_id TEXT NOT NULL,
-    message_id TEXT NOT NULL,
-    channel_id TEXT NOT NULL,
-    title TEXT NOT NULL,
-    description TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(message_id)
-);
-
--- 人気ゲーム用テーブル
-CREATE TABLE popular_games (
-    id SERIAL PRIMARY KEY,
-    guild_id TEXT NOT NULL,
-    game_name TEXT NOT NULL,
-    user_count INTEGER NOT NULL DEFAULT 1,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE(guild_id, game_name)
-);
-
 -- ロールボード用テーブル
 CREATE TABLE role_boards (
     id SERIAL PRIMARY KEY,
