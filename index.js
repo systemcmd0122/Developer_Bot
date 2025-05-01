@@ -64,10 +64,14 @@ app.get('/ping', (req, res) => {
     });
 });
 
-// Koyebスリープ防止の設定
-const PING_INTERVAL = 3 * 60 * 1000; // 3分
+// スリープ防止の設定
+const PING_INTERVAL = 2 * 60 * 1000; // 2分
 const MAX_RETRY_COUNT = 3;
 const RETRY_DELAY = 10000; // 10秒
+const PING_URLS = [
+    'https://ping.web.app', // バックアッププライベートping用URL
+    'https://api.web.app',  // バックアッププライベートping用URL2
+];
 
 // ping用の詳細なロギング関数
 function logPingStatus(status, details = '') {
@@ -79,12 +83,24 @@ function logPingStatus(status, details = '') {
 // ping失敗時のリトライ処理
 async function retryPing(url, retryCount = 0) {
     try {
-        const response = await fetch(url);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000); // 5秒でタイムアウト
+
+        const response = await fetch(url, { 
+            signal: controller.signal,
+            headers: { 'User-Agent': 'Discord-Bot/1.0' }
+        });
+        clearTimeout(timeout);
+
         if (response.ok) {
             logPingStatus('success', `Status: ${response.status}`);
             return true;
         }
     } catch (error) {
+        if (error.name === 'AbortError') {
+            console.error(chalk.yellow('Ping request timed out'));
+        }
+        
         if (retryCount < MAX_RETRY_COUNT) {
             logPingStatus('retry', `Attempt ${retryCount + 1}/${MAX_RETRY_COUNT}`);
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
@@ -93,32 +109,93 @@ async function retryPing(url, retryCount = 0) {
         logPingStatus('failed', error.message);
         return false;
     }
+    return false;
 }
 
 // 強化されたkeepAlive関数
 function keepAlive() {
-    const appUrl = process.env.APP_URL || `http://localhost:${PORT}`;
+    const appUrl = process.env.APP_URL;
     const urls = [
         `${appUrl}/ping`,
-        `${appUrl.replace('http://', 'https://')}/ping`
-    ];
+        `${appUrl}/health`,
+        ...PING_URLS
+    ].filter(Boolean); // undefined/nullを除外
 
+    let lastSuccessfulPing = Date.now();
+    
     setInterval(async () => {
+        let pingSuccess = false;
+
+        // メインのURLでping試行
         for (const url of urls) {
             try {
                 const isSuccess = await retryPing(url);
-                if (isSuccess) break; // 成功したら次のURLは試さない
+                if (isSuccess) {
+                    pingSuccess = true;
+                    lastSuccessfulPing = Date.now();
+                    break;
+                }
             } catch (error) {
                 logPingStatus('error', `URL: ${url} - ${error.message}`);
             }
         }
+
+        // 最後の成功から5分以上経過している場合、警告を表示
+        if (!pingSuccess && (Date.now() - lastSuccessfulPing > 5 * 60 * 1000)) {
+            console.error(chalk.red('Warning: No successful ping in the last 5 minutes'));
+        }
+
+        // メモリ使用状況のログ
+        const used = process.memoryUsage();
+        console.log(chalk.cyan(
+            `Memory Usage - RSS: ${Math.round(used.rss / 1024 / 1024)}MB, ` +
+            `Heap: ${Math.round(used.heapUsed / 1024 / 1024)}MB`
+        ));
+
+        // CPU使用率の監視
+        const cpus = os.cpus();
+        const cpuUsage = cpus.reduce((acc, cpu) => {
+            const total = Object.values(cpu.times).reduce((a, b) => a + b);
+            const idle = cpu.times.idle;
+            return acc + ((total - idle) / total);
+        }, 0) / cpus.length;
+
+        if (cpuUsage > 0.8) { // CPU使用率が80%を超えた場合
+            console.warn(chalk.yellow(`High CPU usage detected: ${Math.round(cpuUsage * 100)}%`));
+        }
+
     }, PING_INTERVAL);
 
-    // メモリ使用状況のログ
-    setInterval(() => {
-        const used = process.memoryUsage();
-        console.log(chalk.cyan(`Memory Usage - RSS: ${Math.round(used.rss / 1024 / 1024)}MB, Heap: ${Math.round(used.heapUsed / 1024 / 1024)}MB`));
-    }, PING_INTERVAL);
+    // Express endpointsの強化
+    app.get('/ping', (req, res) => {
+        res.status(200).json({
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime()
+        });
+    });
+
+    app.get('/health', (req, res) => {
+        const health = {
+            status: 'ok',
+            timestamp: Date.now(),
+            uptime: process.uptime(),
+            memory: process.memoryUsage(),
+            cpu: os.cpus()[0].times,
+            loadavg: os.loadavg(),
+            botStatus: client.ws.status
+        };
+
+        if (health.botStatus === 0) {
+            res.status(200).json(health);
+        } else {
+            res.status(503).json({
+                ...health,
+                status: 'degraded',
+                botStatus: 'disconnected'
+            });
+        }
+    });
 }
 
 const client = new Client({ 

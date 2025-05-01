@@ -28,6 +28,7 @@
     "express-rate-limit": "^7.5.0",
     "ffmpeg-static": "^5.2.0",
     "fs": "^0.0.1-security",
+    "node-fetch": "^3.3.2",
     "openai": "^4.85.1",
     "play-dl": "^1.9.7",
     "sqlite3": "^5.1.7",

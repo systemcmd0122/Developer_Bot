@@ -37,6 +37,15 @@ module.exports = {
                     { name: '英語', value: 'english' },
                     { name: '日本語と英語のミックス', value: 'mixed' }
                 ))
+        .addStringOption(option =>
+            option
+                .setName('target')
+                .setDescription('ニックネームを生成する対象')
+                .setRequired(true)
+                .addChoices(
+                    { name: '自分のみ', value: 'self' },
+                    { name: 'サーバー全員（要管理者権限）', value: 'all' }
+                ))
         .addNumberOption(option =>
             option
                 .setName('length')
@@ -49,15 +58,6 @@ module.exports = {
                 .setName('keywords')
                 .setDescription('含めたいキーワード（オプション）')
                 .setRequired(false))
-        .addStringOption(option =>
-            option
-                .setName('target')
-                .setDescription('ニックネームを生成する対象')
-                .setRequired(true)
-                .addChoices(
-                    { name: '自分のみ', value: 'self' },
-                    { name: 'サーバー全員（要管理者権限）', value: 'all' }
-                ))
         .addBooleanOption(option =>
             option
                 .setName('apply')
@@ -70,9 +70,9 @@ module.exports = {
         try {
             const genre = interaction.options.getString('genre');
             const language = interaction.options.getString('language');
+            const target = interaction.options.getString('target');
             const length = interaction.options.getNumber('length');
             const keywords = interaction.options.getString('keywords');
-            const target = interaction.options.getString('target');
             const shouldApply = interaction.options.getBoolean('apply') || false;
 
             // 全員対象の場合は管理者権限をチェック
