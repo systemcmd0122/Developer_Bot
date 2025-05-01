@@ -70,7 +70,8 @@ const MAX_RETRY_COUNT = 3;
 const RETRY_DELAY = 10000; // 10秒
 const PING_URLS = [
     'https://ping.web.app', // バックアッププライベートping用URL
-    'https://api.web.app',  // バックアッププライベートping用URL2
+    'https://api.web.app',
+    'https://previous-miguelita-tisk-01010100-9d3d68f7.koyeb.app/'  // バックアッププライベートping用URL2
 ];
 
 // ping用の詳細なロギング関数
