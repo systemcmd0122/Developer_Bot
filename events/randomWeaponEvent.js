@@ -28,7 +28,6 @@ module.exports = {
             { name: 'オペレーター', type: 'スナイパー', price: '4,700' },
             { name: 'アレス', type: 'マシンガン', price: '1,600' },
             { name: 'オーディン', type: 'マシンガン', price: '3,200' },
-            { name: '近接武器', type: '近接武器', price: '-' },
             { name: 'アウトロー', type: 'スナイパー', price: '2,400' }
         ];
 
