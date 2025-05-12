@@ -370,9 +370,21 @@ app.get('/health', (req, res) => {
 
 // JSONファイルの更新を監視する機能
 let jsonCache = {};
-const jsonWatcher = fs.watch(path.join(__dirname, 'data'), (eventType, filename) => {
+const dataDir = path.join(__dirname, 'data');
+
+// dataディレクトリが存在しない場合は作成
+if (!fs.existsSync(dataDir)) {
+    try {
+        fs.mkdirSync(dataDir, { recursive: true });
+        console.log(chalk.green('✓ Created data directory'));
+    } catch (error) {
+        console.error(chalk.red('Error creating data directory:'), error);
+    }
+}
+
+const jsonWatcher = fs.watch(dataDir, (eventType, filename) => {
     if (filename && filename.endsWith('.json')) {
-        const filePath = path.join(__dirname, 'data', filename);
+        const filePath = path.join(dataDir, filename);
         try {
             // ファイルの存在確認
             if (!fs.existsSync(filePath)) {
