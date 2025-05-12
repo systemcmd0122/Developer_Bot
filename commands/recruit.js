@@ -1,5 +1,4 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
-const { setTimeout } = require('node:timers');
 
 // ゲーム情報の定義
 const GAME_ROLES = {
@@ -112,11 +111,6 @@ function createButtons() {
         .addComponents(joinButton, leaveButton, waitingButton, closeButton);
 }
 
-// 初期メッセージを取得する関数
-function getInitialMessage(gameInfo) {
-    return `<@&${gameInfo.id}> メンバー募集中！\n>>> ゲーム：${gameInfo.name}\n${gameInfo.description}`;
-}
-
 // 参加者リストをフォーマットする関数
 function formatParticipantsList(participants) {
     return participants.size > 0
@@ -125,11 +119,11 @@ function formatParticipantsList(participants) {
 }
 
 // 埋め込みメッセージを更新する関数
-async function updateEmbed(interaction, embed, gameInfo, playersNeeded, participants, memo, waitingList, remainingTime) {
+async function updateEmbed(mainMessage, embed, gameInfo, playersNeeded, participants, memo, waitingList, remainingTime) {
     try {
         embed.data.fields = [];
         embed.addFields(
-            { name: '主催者', value: `<@${interaction.user.id}>`, inline: true },
+            { name: '主催者', value: `<@${mainMessage.interaction.user.id}>`, inline: true },
             { name: '募集人数', value: `${playersNeeded}人`, inline: true },
             { name: '現在の参加者', value: `${participants.size}/${playersNeeded + 1}人`, inline: true },
             { name: 'メモ', value: memo || 'なし', inline: false },
@@ -154,18 +148,22 @@ async function updateEmbed(interaction, embed, gameInfo, playersNeeded, particip
             });
         }
 
-        await interaction.editReply({ embeds: [embed] });
+        await mainMessage.edit({
+            content: mainMessage.content,
+            embeds: [embed],
+            components: mainMessage.components
+        });
     } catch (error) {
         console.error('Error updating embed:', error);
     }
 }
 
 // 参加ボタンの処理
-async function handleJoin(i, participants, waitingList, playersNeeded, gameInfo, embed, memo, interaction, remainingTime) {
+async function handleJoin(i, mainMessage, participants, waitingList, playersNeeded, gameInfo, embed, memo, remainingTime) {
     if (participants.has(i.user.id)) {
         await i.reply({
             content: 'すでに参加しています！',
-            ephemeral: true
+            flags: [ 'Ephemeral' ]
         });
         return;
     }
@@ -173,18 +171,18 @@ async function handleJoin(i, participants, waitingList, playersNeeded, gameInfo,
     if (waitingList.has(i.user.id)) {
         await i.reply({
             content: 'すでにキャンセル待ちリストに登録されています！',
-            ephemeral: true
+            flags: [ 'Ephemeral' ]
         });
         return;
     }
 
     if (participants.size <= playersNeeded) {
         participants.add(i.user.id);
-        updateEmbed(interaction, embed, gameInfo, playersNeeded, participants, memo, waitingList, remainingTime);
+        await updateEmbed(mainMessage, embed, gameInfo, playersNeeded, participants, memo, waitingList, remainingTime);
         
         if (participants.size === playersNeeded + 1) {
             const mentionList = Array.from(participants).map(id => `<@${id}>`).join(' ');
-            await interaction.followUp({
+            await i.channel.send({
                 content: `${gameInfo.emoji} ${gameInfo.name}のメンバーが集まりました！\n${mentionList}`,
                 allowedMentions: { users: Array.from(participants) }
             });
@@ -192,30 +190,30 @@ async function handleJoin(i, participants, waitingList, playersNeeded, gameInfo,
 
         await i.reply({
             content: '参加登録しました！',
-            ephemeral: true
+            flags: [ 'Ephemeral' ]
         });
     } else {
         await i.reply({
             content: '募集人数が既に満員のため、キャンセル待ちボタンから登録してください。',
-            ephemeral: true
+            flags: [ 'Ephemeral' ]
         });
     }
 }
 
 // 離脱ボタンの処理
-async function handleLeave(i, participants, waitingList, playersNeeded, gameInfo, embed, memo, interaction, remainingTime) {
+async function handleLeave(i, mainMessage, participants, waitingList, playersNeeded, gameInfo, embed, memo, remainingTime) {
     if (!participants.has(i.user.id)) {
         await i.reply({
             content: '参加していないため、取り消しできません！',
-            ephemeral: true
+            flags: [ 'Ephemeral' ]
         });
         return;
     }
 
-    if (i.user.id === interaction.user.id) {
+    if (i.user.id === mainMessage.interaction.user.id) {
         await i.reply({
             content: '主催者は参加を取り消せません！',
-            ephemeral: true
+            flags: [ 'Ephemeral' ]
         });
         return;
     }
@@ -227,26 +225,26 @@ async function handleLeave(i, participants, waitingList, playersNeeded, gameInfo
         const nextParticipant = waitingList.values().next().value;
         waitingList.delete(nextParticipant);
         participants.add(nextParticipant);
-        await interaction.followUp({
+        await i.channel.send({
             content: `<@${nextParticipant}> キャンセル待ちから参加メンバーに昇格しました！`,
             allowedMentions: { users: [nextParticipant] }
         });
     }
 
-    updateEmbed(interaction, embed, gameInfo, playersNeeded, participants, memo, waitingList, remainingTime);
+    await updateEmbed(mainMessage, embed, gameInfo, playersNeeded, participants, memo, waitingList, remainingTime);
 
     await i.reply({
         content: '参加を取り消しました！',
-        ephemeral: true
+        flags: [ 'Ephemeral' ]
     });
 }
 
 // キャンセル待ちボタンの処理
-async function handleWaitingList(i, participants, waitingList, playersNeeded, gameInfo, embed, memo, interaction, remainingTime) {
+async function handleWaitingList(i, mainMessage, participants, waitingList, playersNeeded, gameInfo, embed, memo, remainingTime) {
     if (participants.has(i.user.id)) {
         await i.reply({
             content: 'すでに参加者として登録されています！',
-            ephemeral: true
+            flags: [ 'Ephemeral' ]
         });
         return;
     }
@@ -255,25 +253,25 @@ async function handleWaitingList(i, participants, waitingList, playersNeeded, ga
         waitingList.delete(i.user.id);
         await i.reply({
             content: 'キャンセル待ちを取り消しました！',
-            ephemeral: true
+            flags: [ 'Ephemeral' ]
         });
     } else {
         waitingList.add(i.user.id);
         await i.reply({
             content: 'キャンセル待ちリストに登録しました！',
-            ephemeral: true
+            flags: [ 'Ephemeral' ]
         });
     }
 
-    updateEmbed(interaction, embed, gameInfo, playersNeeded, participants, memo, waitingList, remainingTime);
+    await updateEmbed(mainMessage, embed, gameInfo, playersNeeded, participants, memo, waitingList, remainingTime);
 }
 
 // 募集締め切りボタンの処理
-async function handleClose(i, collector, participants, waitingList, interaction, gameInfo, embed) {
-    if (i.user.id !== interaction.user.id) {
+async function handleClose(i, mainMessage, collector, participants, waitingList, gameInfo, embed) {
+    if (i.user.id !== mainMessage.interaction.user.id) {
         await i.reply({
             content: '主催者のみが募集を締め切ることができます！',
-            ephemeral: true
+            flags: [ 'Ephemeral' ]
         });
         return;
     }
@@ -283,21 +281,26 @@ async function handleClose(i, collector, participants, waitingList, interaction,
     embed.setColor('#808080')
         .setTitle(`${gameInfo.emoji} ${gameInfo.name}の募集【締切済み】`);
 
-    await i.update({
+    await mainMessage.edit({
         content: `${gameInfo.name}の募集を締め切りました。\n参加者: ${mentionList}`,
         embeds: [embed],
         components: []
     });
+
+    await i.reply({
+        content: '募集を締め切りました。',
+        flags: [ 'Ephemeral' ]
+    });
 }
 
 // コレクター終了時の処理
-async function handleCollectorEnd(reason, interaction, gameInfo, embed, participants) {
+async function handleCollectorEnd(reason, mainMessage, gameInfo, embed, participants) {
     if (reason === 'time') {
         embed.setColor('#808080')
             .setTitle(`${gameInfo.emoji} ${gameInfo.name}の募集【期限切れ】`);
         
         const mentionList = Array.from(participants).map(id => `<@${id}>`).join(' ');
-        await interaction.editReply({
+        await mainMessage.edit({
             content: `${gameInfo.name}の募集が期限切れになりました。\n最終参加者: ${mentionList}`,
             embeds: [embed],
             components: []
@@ -305,6 +308,7 @@ async function handleCollectorEnd(reason, interaction, gameInfo, embed, particip
     }
 }
 
+// メインのコマンド定義
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('recruit')
@@ -354,15 +358,15 @@ module.exports = {
             const buttons = createButtons();
 
             // 募集メッセージを送信
-            const response = await interaction.reply({
-                content: getInitialMessage(gameInfo),
+            const mainMessage = await interaction.reply({
+                content: `<@&${gameInfo.id}> メンバー募集中！\n>>> ゲーム：${gameInfo.name}\n${gameInfo.description}`,
                 embeds: [embed],
                 components: [buttons],
                 fetchReply: true
             });
 
             // ボタンのコレクターを設定
-            const collector = response.createMessageComponentCollector({
+            const collector = mainMessage.createMessageComponentCollector({
                 time: duration * 60 * 1000 // 分をミリ秒に変換
             });
 
@@ -371,7 +375,7 @@ module.exports = {
             const timerInterval = setInterval(() => {
                 remainingTime -= 1;
                 if (remainingTime % 60 === 0) { // 1分ごとに更新
-                    updateEmbed(interaction, embed, gameInfo, playersNeeded, participants, memo, waitingList, remainingTime);
+                    updateEmbed(mainMessage, embed, gameInfo, playersNeeded, participants, memo, waitingList, remainingTime);
                 }
             }, 1000);
 
@@ -380,40 +384,50 @@ module.exports = {
                 try {
                     switch (i.customId) {
                         case 'join_recruit':
-                            await handleJoin(i, participants, waitingList, playersNeeded, gameInfo, embed, memo, interaction, remainingTime);
+                            await handleJoin(i, mainMessage, participants, waitingList, playersNeeded, gameInfo, embed, memo, remainingTime);
                             break;
                         case 'leave_recruit':
-                            await handleLeave(i, participants, waitingList, playersNeeded, gameInfo, embed, memo, interaction, remainingTime);
+                            await handleLeave(i, mainMessage, participants, waitingList, playersNeeded, gameInfo, embed, memo, remainingTime);
                             break;
                         case 'waiting_recruit':
-                            await handleWaitingList(i, participants, waitingList, playersNeeded, gameInfo, embed, memo, interaction, remainingTime);
+                            await handleWaitingList(i, mainMessage, participants, waitingList, playersNeeded, gameInfo, embed, memo, remainingTime);
                             break;
                         case 'close_recruit':
-                            await handleClose(i, collector, participants, waitingList, interaction, gameInfo, embed);
+                            await handleClose(i, mainMessage, collector, participants, waitingList, gameInfo, embed);
                             clearInterval(timerInterval);
                             break;
                     }
                 } catch (error) {
                     console.error('Error handling button interaction:', error);
-                    await i.reply({
-                        content: 'ボタンの処理中にエラーが発生しました。',
-                        ephemeral: true
-                    });
+                    try {
+                        await i.reply({
+                            content: 'ボタンの処理中にエラーが発生しました。',
+                            flags: [ 'Ephemeral' ]
+                        });
+                    } catch (replyError) {
+                        console.error('Error sending error message:', replyError);
+                    }
                 }
             });
 
             // コレクターが終了したときの処理
             collector.on('end', (collected, reason) => {
                 clearInterval(timerInterval);
-                handleCollectorEnd(reason, interaction, gameInfo, embed, participants);
+                handleCollectorEnd(reason, mainMessage, gameInfo, embed, participants);
             });
 
         } catch (error) {
             console.error('Error in recruit command:', error);
-            await interaction.reply({
-                content: 'コマンドの実行中にエラーが発生しました。',
-                ephemeral: true
-            });
+            try {
+                if (!interaction.replied) {
+                    await interaction.reply({
+                        content: 'コマンドの実行中にエラーが発生しました。',
+                        flags: [ 'Ephemeral' ]
+                    });
+                }
+            } catch (replyError) {
+                console.error('Error sending error message:', replyError);
+            }
         }
     },
 };
