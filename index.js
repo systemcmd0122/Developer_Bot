@@ -11,25 +11,27 @@ const BOT_VERSION = '1.1.0';
 const PORT = process.env.PORT || 8000;
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
+// データディレクトリの確認と作成
+const DATA_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) {
+    try {
+        fs.mkdirSync(DATA_DIR);
+        console.log(chalk.green('✓ Created data directory'));
+    } catch (error) {
+        console.error('Error creating data directory:', error);
+    }
+}
+
 // JSONファイルを動的に読み込む関数
 function loadJsonFiles() {
     const jsonFiles = {};
     try {
-        const dataPath = path.join(__dirname, 'data');
-        
-        // dataディレクトリが存在しない場合は作成
-        if (!fs.existsSync(dataPath)) {
-            fs.mkdirSync(dataPath);
-        }
-
-        // dataディレクトリ内のすべてのJSONファイルを読み込む
-        const files = fs.readdirSync(dataPath).filter(file => file.endsWith('.json'));
+        const files = fs.readdirSync(DATA_DIR).filter(file => file.endsWith('.json'));
         
         for (const file of files) {
-            const filePath = path.join(dataPath, file);
+            const filePath = path.join(DATA_DIR, file);
             const fileContent = fs.readFileSync(filePath, 'utf8');
-            const fileName = path.basename(file, '.json');
-            jsonFiles[fileName] = JSON.parse(fileContent);
+            jsonFiles[file.replace('.json', '')] = JSON.parse(fileContent);
         }
         
         console.log(chalk.green(`✓ Loaded ${files.length} JSON files from data directory`));
@@ -69,10 +71,10 @@ const PING_INTERVAL = 2 * 60 * 1000; // 2分
 const MAX_RETRY_COUNT = 3;
 const RETRY_DELAY = 10000; // 10秒
 const PING_URLS = [
-    'https://ping.web.app', // バックアッププライベートping用URL
-    'https://api.web.app',
-    'https://previous-miguelita-tisk-01010100-9d3d68f7.koyeb.app/'  // バックアッププライベートping用URL2
-];
+    process.env.PING_URL1,
+    process.env.PING_URL2,
+    process.env.PING_URL3
+].filter(Boolean); // undefined/nullを除外
 
 // ping用の詳細なロギング関数
 function logPingStatus(status, details = '') {
@@ -85,8 +87,7 @@ function logPingStatus(status, details = '') {
 async function retryPing(url, retryCount = 0) {
     try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000); // 5秒でタイムアウト
-
+        const timeout = setTimeout(() => controller.abort(), 5000);
         const response = await fetch(url, { 
             signal: controller.signal,
             headers: { 'User-Agent': 'Discord-Bot/1.0' }
@@ -103,7 +104,7 @@ async function retryPing(url, retryCount = 0) {
         }
         
         if (retryCount < MAX_RETRY_COUNT) {
-            logPingStatus('retry', `Attempt ${retryCount + 1}/${MAX_RETRY_COUNT}`);
+            console.log(chalk.yellow(`Retrying ping (${retryCount + 1}/${MAX_RETRY_COUNT})...`));
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
             return retryPing(url, retryCount + 1);
         }
@@ -115,12 +116,11 @@ async function retryPing(url, retryCount = 0) {
 
 // 強化されたkeepAlive関数
 function keepAlive() {
-    const appUrl = process.env.APP_URL;
     const urls = [
-        `${appUrl}/ping`,
-        `${appUrl}/health`,
+        `${process.env.APP_URL}/ping`,
+        `${process.env.APP_URL}/health`,
         ...PING_URLS
-    ].filter(Boolean); // undefined/nullを除外
+    ].filter(Boolean);
 
     let lastSuccessfulPing = Date.now();
     
@@ -130,20 +130,20 @@ function keepAlive() {
         // メインのURLでping試行
         for (const url of urls) {
             try {
-                const isSuccess = await retryPing(url);
-                if (isSuccess) {
+                const success = await retryPing(url);
+                if (success) {
                     pingSuccess = true;
                     lastSuccessfulPing = Date.now();
                     break;
                 }
             } catch (error) {
-                logPingStatus('error', `URL: ${url} - ${error.message}`);
+                console.error('Error during ping:', error);
             }
         }
 
         // 最後の成功から5分以上経過している場合、警告を表示
         if (!pingSuccess && (Date.now() - lastSuccessfulPing > 5 * 60 * 1000)) {
-            console.error(chalk.red('Warning: No successful ping in the last 5 minutes'));
+            console.warn(chalk.red('Warning: No successful ping in the last 5 minutes'));
         }
 
         // メモリ使用状況のログ
@@ -158,11 +158,11 @@ function keepAlive() {
         const cpuUsage = cpus.reduce((acc, cpu) => {
             const total = Object.values(cpu.times).reduce((a, b) => a + b);
             const idle = cpu.times.idle;
-            return acc + ((total - idle) / total);
+            return acc + (1 - idle / total);
         }, 0) / cpus.length;
 
-        if (cpuUsage > 0.8) { // CPU使用率が80%を超えた場合
-            console.warn(chalk.yellow(`High CPU usage detected: ${Math.round(cpuUsage * 100)}%`));
+        if (cpuUsage > 0.8) {
+            console.warn(chalk.red(`High CPU usage detected: ${Math.round(cpuUsage * 100)}%`));
         }
 
     }, PING_INTERVAL);
@@ -193,9 +193,17 @@ function keepAlive() {
             res.status(503).json({
                 ...health,
                 status: 'degraded',
-                botStatus: 'disconnected'
+                message: 'Bot connection issues detected'
             });
         }
+    });
+
+    const server = app.listen(PORT, () => {
+        console.log(chalk.green(`Server is running on port ${PORT}`));
+    });
+
+    server.on('error', (error) => {
+        console.error('Server error:', error);
     });
 }
 
@@ -219,11 +227,49 @@ client.commands = new Collection();
 client.roleBoards = {};
 client.startTime = Date.now();
 
-// New command tracking
+// Command tracking system
 const commandStats = {
-    usage: {},
+    usage: new Collection(),
     recent: []
 };
+
+// Track command usage
+function trackCommand(commandName, user) {
+    if (!commandStats.usage.has(commandName)) {
+        commandStats.usage.set(commandName, {
+            count: 0,
+            users: new Set()
+        });
+    }
+
+    const stats = commandStats.usage.get(commandName);
+    stats.count++;
+    stats.users.add(user.id);
+    
+    const recentCommand = {
+        command: commandName,
+        user: user.tag,
+        timestamp: new Date().toISOString()
+    };
+    
+    commandStats.recent.unshift(recentCommand);
+    if (commandStats.recent.length > 10) {
+        commandStats.recent.pop();
+    }
+
+    // JSONファイルに保存
+    try {
+        fs.writeFileSync(
+            path.join(DATA_DIR, 'commandStats.json'),
+            JSON.stringify({
+                usage: Array.from(commandStats.usage.entries()),
+                recent: commandStats.recent
+            }, null, 2)
+        );
+    } catch (error) {
+        console.error('Error saving command stats:', error);
+    }
+}
 
 // Enhanced metrics collection
 function getMetrics() {
@@ -267,7 +313,14 @@ function getMetrics() {
                 arch: os.arch(),
                 nodejs: process.version
             },
-            commands: commandStats
+            commands: {
+                usage: Array.from(commandStats.usage.entries()).map(([name, stats]) => ({
+                    name,
+                    count: stats.count,
+                    uniqueUsers: stats.users.size
+                })),
+                recent: commandStats.recent
+            }
         };
     } catch (error) {
         console.error('Error getting metrics:', error);
@@ -285,60 +338,14 @@ app.get('/', (req, res) => {
     }
 });
 
-// JSONファイルの一覧を取得するエンドポイント
-app.get('/data/json-files', (req, res) => {
-    try {
-        const dataPath = path.join(__dirname, 'data');
-        if (!fs.existsSync(dataPath)) {
-            return res.json({ files: [] });
-        }
-
-        const files = fs.readdirSync(dataPath)
-            .filter(file => file.endsWith('.json'))
-            .map(file => {
-                const filePath = path.join(dataPath, file);
-                const stats = fs.statSync(filePath);
-                return {
-                    name: path.basename(file, '.json'),
-                    size: stats.size,
-                    lastModified: stats.mtime,
-                    content: JSON.parse(fs.readFileSync(filePath, 'utf8'))
-                };
-            });
-
-        res.json({ files });
-    } catch (error) {
-        console.error('Error listing JSON files:', error);
-        res.status(500).json({ error: 'Failed to list JSON files' });
-    }
-});
-
-// 個別のJSONファイルを取得するエンドポイント
-app.get('/data/json/:filename', (req, res) => {
-    try {
-        const filename = req.params.filename;
-        const filePath = path.join(__dirname, 'data', `${filename}.json`);
-
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: 'File not found' });
-        }
-
-        const fileContent = fs.readFileSync(filePath, 'utf8');
-        const jsonContent = JSON.parse(fileContent);
-        res.json(jsonContent);
-    } catch (error) {
-        console.error(`Error serving JSON file ${req.params.filename}:`, error);
-        res.status(500).json({ error: 'Failed to load JSON file' });
-    }
-});
-
+// メトリクスAPIエンドポイント
 app.get('/metrics', (req, res) => {
     try {
         const metrics = getMetrics();
         if (metrics) {
             res.json(metrics);
         } else {
-            res.status(500).json({ error: 'Failed to get metrics' });
+            res.status(500).json({ error: 'Failed to collect metrics' });
         }
     } catch (error) {
         console.error('Error serving metrics:', error);
@@ -346,69 +353,22 @@ app.get('/metrics', (req, res) => {
     }
 });
 
-// ヘルスチェックエンドポイントの強化
-app.get('/health', (req, res) => {
-    try {
-        const health = {
-            status: 'ok',
-            timestamp: Date.now(),
-            uptime: process.uptime(),
-            memory: process.memoryUsage(),
-            cpu: os.cpus()[0].times,
-            loadavg: os.loadavg()
-        };
-        res.status(200).json(health);
-    } catch (error) {
-        console.error('Error checking health:', error);
-        res.status(500).json({ 
-            status: 'error',
-            timestamp: Date.now(),
-            error: error.message 
-        });
-    }
-});
-
 // JSONファイルの更新を監視する機能
 let jsonCache = {};
-const dataDir = path.join(__dirname, 'data');
-
-// dataディレクトリが存在しない場合は作成
-if (!fs.existsSync(dataDir)) {
-    try {
-        fs.mkdirSync(dataDir, { recursive: true });
-        console.log(chalk.green('✓ Created data directory'));
-    } catch (error) {
-        console.error(chalk.red('Error creating data directory:'), error);
-    }
-}
-
-const jsonWatcher = fs.watch(dataDir, (eventType, filename) => {
+const jsonWatcher = fs.watch(DATA_DIR, (eventType, filename) => {
     if (filename && filename.endsWith('.json')) {
-        const filePath = path.join(dataDir, filename);
+        const filePath = path.join(DATA_DIR, filename);
         try {
-            // ファイルの存在確認
-            if (!fs.existsSync(filePath)) {
-                return;
+            const content = fs.readFileSync(filePath, 'utf8');
+            const newData = JSON.parse(content);
+            const oldData = jsonCache[filename];
+            jsonCache[filename] = newData;
+
+            if (JSON.stringify(oldData) !== JSON.stringify(newData)) {
+                console.log(chalk.blue(`JSON file updated: ${filename}`));
             }
-            
-            // 少し待って完全に書き込みが終わるのを待つ
-            setTimeout(() => {
-                try {
-                    const content = fs.readFileSync(filePath, 'utf8');
-                    if (content.trim() === '') {
-                        console.log(chalk.yellow(`Skipping empty file: ${filename}`));
-                        return;
-                    }
-                    
-                    const fileName = path.basename(filename, '.json');
-                    jsonCache[fileName] = JSON.parse(content);
-                    console.log(chalk.blue(`✓ Updated JSON cache for ${filename}`));
-                } catch (innerError) {
-                    console.error(`Error updating JSON cache for ${filename}:`, innerError);
-                }
-            }, 500); // 500msの遅延を設ける
         } catch (error) {
-            console.error(`Error accessing file ${filename}:`, error);
+            console.error(`Error watching JSON file ${filename}:`, error);
         }
     }
 });
@@ -424,26 +384,26 @@ async function loadCommands(retries = 3) {
         let attempts = 0;
         while (attempts < retries) {
             try {
-                const frame = FRAMES[frameIndex % FRAMES.length];
-                process.stdout.write(`\r${chalk.blue(frame)} Loading command: ${chalk.white(file)}`);
-                
+                process.stdout.write(`\r${FRAMES[frameIndex]} Loading command: ${file}`);
+                frameIndex = (frameIndex + 1) % FRAMES.length;
+
                 const filePath = path.join(commandsPath, file);
                 const command = require(filePath);
+                
                 if ('data' in command && 'execute' in command) {
                     client.commands.set(command.data.name, command);
                     commands.push(command.data.toJSON());
                     break;
+                } else {
+                    console.error(chalk.red(`\n✗ Command at ${file} missing required properties`));
+                    break;
                 }
-                
-                await new Promise(resolve => setTimeout(resolve, 200));
-                frameIndex++;
             } catch (error) {
                 attempts++;
-                console.error(`Error loading command ${file} (attempt ${attempts}):`, error);
-                await new Promise(resolve => setTimeout(resolve, 1000));
                 if (attempts === retries) {
-                    throw error;
+                    console.error(chalk.red(`\n✗ Failed to load command ${file}:`, error));
                 }
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
         }
     }
@@ -461,28 +421,17 @@ function loadEvents() {
         try {
             const filePath = path.join(eventsPath, file);
             const event = require(filePath);
-
+            
             if (event.once) {
-                client.once(event.name, (...args) => {
-                    try {
-                        event.execute(...args);
-                    } catch (error) {
-                        console.error(`Error executing event ${event.name}:`, error);
-                    }
-                });
+                client.once(event.name, (...args) => event.execute(...args));
             } else {
-                client.on(event.name, (...args) => {
-                    try {
-                        event.execute(...args);
-                    } catch (error) {
-                        console.error(`Error executing event ${event.name}:`, error);
-                    }
-                });
+                client.on(event.name, (...args) => event.execute(...args));
             }
         } catch (error) {
             console.error(`Error loading event ${file}:`, error);
         }
     }
+    console.log(chalk.green(`✓ Loaded ${eventFiles.length} events`));
 }
 
 // Enhanced command registration with retry mechanism
@@ -495,97 +444,51 @@ async function registerCommands(commands, retries = 3) {
 
             await rest.put(
                 Routes.applicationCommands(process.env.CLIENT_ID),
-                { body: commands },
+                { body: commands }
             );
 
             console.log(chalk.green('Successfully reloaded application (/) commands.'));
-            break;
+            return true;
         } catch (error) {
             attempts++;
-            console.error(`Error registering commands (attempt ${attempts}):`, error);
-            if (attempts === retries) {
-                throw error;
+            console.error(chalk.red('Error registering commands:', error));
+            
+            if (attempts < retries) {
+                console.log(chalk.yellow(`Retrying... (${attempts}/${retries})`));
+                await new Promise(resolve => setTimeout(resolve, 5000));
             }
-            await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }
+    return false;
 }
 
 // Enhanced interaction handling with command tracking
 client.on(Events.InteractionCreate, async interaction => {
     try {
-        if (interaction.isChatInputCommand()) {
-            const command = client.commands.get(interaction.commandName);
-            if (!command) {
-                console.error(`No command matching ${interaction.commandName} was found.`);
-                return;
-            }
+        if (!interaction.isChatInputCommand()) return;
 
-            try {
-                // Track command usage before execution
-                trackCommand(interaction.commandName, interaction.user);
-                
-                await command.execute(interaction);
-            } catch (error) {
-                console.error('Error executing command:', error);
-                const errorMessage = 'コマンドの実行中にエラーが発生しました。';
-                if (interaction.replied || interaction.deferred) {
-                    await interaction.followUp({ content: errorMessage, ephemeral: true });
-                } else {
-                    await interaction.reply({ content: errorMessage, ephemeral: true });
-                }
-            }
-        }
-        else if (interaction.isButton() || interaction.isStringSelectMenu()) {
-            // じゃんけんボタンハンドラー
-            if (interaction.customId.startsWith('janken-')) {
-                const jankenCommand = client.commands.get('janken');
-                if (jankenCommand) {
-                    if (interaction.customId === 'janken-again') {
-                        await jankenCommand.handlePlayAgain(interaction);
-                    } else {
-                        await jankenCommand.handleJankenButton(interaction);
-                    }
-                }
-            }
-            // ロール管理ボタンハンドラー
-            else if (interaction.customId.startsWith('role-')) {
-                const roleManageCommand = client.commands.get('rolemanage');
-                if (roleManageCommand && roleManageCommand.handleRoleButton) {
-                    await roleManageCommand.handleRoleButton(interaction);
-                }
-            }
-            // ゲーム募集ボタンハンドラー
-            else if (interaction.customId.startsWith('game-')) {
-                const gameCommand = client.commands.get('game');
-                if (gameCommand && gameCommand.handleGameButton) {
-                    await gameCommand.handleGameButton(interaction);
-                }
-            }
-        }
-        else if (interaction.isAutocomplete()) {
-            const command = client.commands.get(interaction.commandName);
-            if (!command) {
-                console.error(`No command matching ${interaction.commandName} was found.`);
-                return;
-            }
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
 
-            try {
-                if (command.autocomplete) {
-                    await command.autocomplete(interaction);
-                }
-            } catch (error) {
-                console.error('Error handling autocomplete:', error);
-            }
-        }
+        await command.execute(interaction);
+        
+        // コマンド使用状況を追跡
+        trackCommand(interaction.commandName, interaction.user);
+        
     } catch (error) {
-        console.error('Error handling interaction:', error);
+        console.error('Error executing command:', error);
+        const errorMessage = {
+            content: 'コマンドの実行中にエラーが発生しました。',
+            ephemeral: true
+        };
+
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp(errorMessage);
+        } else {
+            await interaction.reply(errorMessage);
+        }
     }
 });
-
-// InteractionManagerの初期化
-const InteractionManager = require('./events/interactions');
-client.interactionManager = new InteractionManager(client);
 
 // Enhanced startup animation
 async function animateStartup() {
@@ -629,45 +532,32 @@ client.on('reconnecting', () => {
 (async () => {
     try {
         await animateStartup();
-        
+
+        // コマンドの読み込みと登録
+        console.log(chalk.yellow('Loading commands...'));
         const commands = await loadCommands();
-        await registerCommands(commands);
         
+        if (commands.length > 0) {
+            console.log(chalk.yellow('Registering commands...'));
+            await registerCommands(commands);
+        }
+
+        // イベントの読み込み
+        console.log(chalk.yellow('Loading events...'));
         loadEvents();
 
-        // Load JSON files on startup
-        const jsonFiles = loadJsonFiles();
-        console.log(chalk.green('✓ JSON files loaded successfully'));
+        // JSONファイルの読み込み
+        console.log(chalk.yellow('Loading JSON files...'));
+        jsonCache = loadJsonFiles();
 
-        // Start Express server with enhanced error handling
-        const server = app.listen(PORT, () => {
-            console.log(chalk.green(`✓ Metrics server running on port ${PORT}`));
-        });
-
-        server.on('error', (error) => {
-            console.error(chalk.red('Express server error:'), error);
-        });
-
-        // Start keep-alive mechanism
-        keepAlive();
-        console.log(chalk.green('✓ Keep-alive service started'));
-
-        console.log(chalk.yellow('🔌 Connecting to Discord...'));
-        
+        // Botの起動
         await client.login(process.env.DISCORD_TOKEN);
-        console.log(chalk.green('✓ Bot is ready!'));
-
-        // Memory usage monitoring
-        setInterval(() => {
-            const used = process.memoryUsage();
-            if (used.heapUsed > 512 * 1024 * 1024) { // 512MB threshold
-                console.warn(chalk.yellow('High memory usage detected:', 
-                    `${Math.round(used.heapUsed / 1024 / 1024)}MB`));
-            }
-        }, 60000);
+        
+        // サーバーの起動
+        keepAlive();
 
     } catch (error) {
-        console.error(chalk.red('Fatal error during startup:'), error);
+        console.error(chalk.red('Error during startup:'), error);
         process.exit(1);
     }
 })();
@@ -676,7 +566,24 @@ client.on('reconnecting', () => {
 async function gracefulShutdown() {
     console.log(chalk.yellow('\nGracefully shutting down...'));
     try {
-        await client.destroy();
+        // コマンド使用状況の保存
+        const statsPath = path.join(DATA_DIR, 'commandStats.json');
+        fs.writeFileSync(statsPath, JSON.stringify({
+            usage: Array.from(commandStats.usage.entries()),
+            recent: commandStats.recent
+        }, null, 2));
+
+        // jsonWatcherの停止
+        if (jsonWatcher) {
+            jsonWatcher.close();
+        }
+
+        // クライアントの停止
+        if (client) {
+            await client.destroy();
+        }
+
+        console.log(chalk.green('Shutdown completed successfully'));
         process.exit(0);
     } catch (error) {
         console.error(chalk.red('Error during shutdown:'), error);
@@ -687,5 +594,5 @@ async function gracefulShutdown() {
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
 
-// Export the app for testing purposes
+// Export for testing
 module.exports = { app, client };
