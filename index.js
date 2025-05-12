@@ -205,7 +205,6 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildPresences,
         GatewayIntentBits.GuildVoiceStates
     ],
     failIfNotExists: false,
@@ -218,7 +217,6 @@ const client = new Client({
 // Global data stores with persistence
 client.commands = new Collection();
 client.roleBoards = {};
-client.userPreferences = {};
 client.startTime = Date.now();
 
 // New command tracking
@@ -226,26 +224,6 @@ const commandStats = {
     usage: {},
     recent: []
 };
-
-// Track command usage
-function trackCommand(commandName, user) {
-    // Update usage count
-    commandStats.usage[commandName] = (commandStats.usage[commandName] || 0) + 1;
-    
-    // Add to recent commands
-    const recentCommand = {
-        command: commandName,
-        user: user.username,
-        timestamp: new Date().toISOString()
-    };
-    
-    commandStats.recent.unshift(recentCommand);
-    
-    // Keep only last 10 commands
-    if (commandStats.recent.length > 10) {
-        commandStats.recent.pop();
-    }
-}
 
 // Enhanced metrics collection
 function getMetrics() {
