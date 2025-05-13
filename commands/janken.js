@@ -17,6 +17,8 @@ module.exports = {
                 .setDescription('対戦相手を選択してください')
                 .setRequired(true)),
 
+    gameStates: new Map(), // ゲーム状態を保持するMap
+
     async execute(interaction) {
         const opponent = interaction.options.getUser('opponent');
         
@@ -43,7 +45,8 @@ module.exports = {
             challenger: interaction.user.id,
             opponent: opponent.id,
             challengerHand: null,
-            opponentHand: null
+            opponentHand: null,
+            timestamp: Date.now() // タイムスタンプを追加
         };
 
         // ボタンを作成
@@ -73,7 +76,6 @@ module.exports = {
         });
 
         // メッセージIDをゲーム状態に紐付ける
-        this.gameStates = this.gameStates || new Map();
         this.gameStates.set(message.id, gameState);
 
         // 1分後にゲームを終了
@@ -99,6 +101,9 @@ module.exports = {
 
     // ボタンインタラクションのハンドラー
     async handleJankenButton(interaction) {
+        // インタラクションを確認
+        if (!interaction.isButton()) return;
+
         const [, challengerId, opponentId, hand] = interaction.customId.split('-');
         const gameState = this.gameStates.get(interaction.message.id);
 
@@ -199,6 +204,8 @@ module.exports = {
 
     // 「もう一度遊ぶ」ボタンのハンドラー
     async handlePlayAgain(interaction) {
+        if (!interaction.isButton()) return;
+
         const [, , challengerId, opponentId] = interaction.customId.split('-');
 
         // 参加者以外のクリックを防ぐ
@@ -215,7 +222,8 @@ module.exports = {
             challenger: challengerId,
             opponent: opponentId,
             challengerHand: null,
-            opponentHand: null
+            opponentHand: null,
+            timestamp: Date.now() // タイムスタンプを追加
         };
 
         // ボタンを作成
