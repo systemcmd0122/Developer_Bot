@@ -6,6 +6,7 @@ const chalk = require('chalk');
 const express = require('express');
 const os = require('os');
 const https = require('https');
+const InteractionManager = require('./events/interactions');
 
 const BOT_VERSION = '1.1.0';
 const PORT = process.env.PORT || 8000;
@@ -74,7 +75,7 @@ const PING_URLS = [
     process.env.PING_URL1,
     process.env.PING_URL2,
     process.env.PING_URL3
-].filter(Boolean); // undefined/nullを除外
+].filter(Boolean);
 
 // ping用の詳細なロギング関数
 function logPingStatus(status, details = '') {
@@ -127,7 +128,6 @@ function keepAlive() {
     setInterval(async () => {
         let pingSuccess = false;
 
-        // メインのURLでping試行
         for (const url of urls) {
             try {
                 const success = await retryPing(url);
@@ -141,19 +141,16 @@ function keepAlive() {
             }
         }
 
-        // 最後の成功から5分以上経過している場合、警告を表示
         if (!pingSuccess && (Date.now() - lastSuccessfulPing > 5 * 60 * 1000)) {
             console.warn(chalk.red('Warning: No successful ping in the last 5 minutes'));
         }
 
-        // メモリ使用状況のログ
         const used = process.memoryUsage();
         console.log(chalk.cyan(
             `Memory Usage - RSS: ${Math.round(used.rss / 1024 / 1024)}MB, ` +
             `Heap: ${Math.round(used.heapUsed / 1024 / 1024)}MB`
         ));
 
-        // CPU使用率の監視
         const cpus = os.cpus();
         const cpuUsage = cpus.reduce((acc, cpu) => {
             const total = Object.values(cpu.times).reduce((a, b) => a + b);
@@ -167,7 +164,7 @@ function keepAlive() {
 
     }, PING_INTERVAL);
 
-    // Express endpointsの強化
+    // Express endpoints
     app.get('/ping', (req, res) => {
         res.status(200).json({
             status: 'ok',
@@ -222,8 +219,11 @@ const client = new Client({
     }
 });
 
-// Global data stores with persistence
+// Initialize Collections
 client.commands = new Collection();
+client.buttonHandlers = new Collection();
+client.menuHandlers = new Collection();
+client.modalHandlers = new Collection();
 client.roleBoards = {};
 client.startTime = Date.now();
 
@@ -257,7 +257,6 @@ function trackCommand(commandName, user) {
         commandStats.recent.pop();
     }
 
-    // JSONファイルに保存
     try {
         fs.writeFileSync(
             path.join(DATA_DIR, 'commandStats.json'),
@@ -327,51 +326,6 @@ function getMetrics() {
         return null;
     }
 }
-
-// Enhanced error handling for routes
-app.get('/', (req, res) => {
-    try {
-        res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
-    } catch (error) {
-        console.error('Error serving dashboard:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// メトリクスAPIエンドポイント
-app.get('/metrics', (req, res) => {
-    try {
-        const metrics = getMetrics();
-        if (metrics) {
-            res.json(metrics);
-        } else {
-            res.status(500).json({ error: 'Failed to collect metrics' });
-        }
-    } catch (error) {
-        console.error('Error serving metrics:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
-// JSONファイルの更新を監視する機能
-let jsonCache = {};
-const jsonWatcher = fs.watch(DATA_DIR, (eventType, filename) => {
-    if (filename && filename.endsWith('.json')) {
-        const filePath = path.join(DATA_DIR, filename);
-        try {
-            const content = fs.readFileSync(filePath, 'utf8');
-            const newData = JSON.parse(content);
-            const oldData = jsonCache[filename];
-            jsonCache[filename] = newData;
-
-            if (JSON.stringify(oldData) !== JSON.stringify(newData)) {
-                console.log(chalk.blue(`JSON file updated: ${filename}`));
-            }
-        } catch (error) {
-            console.error(`Error watching JSON file ${filename}:`, error);
-        }
-    }
-});
 
 // Enhanced command loading with retry mechanism
 async function loadCommands(retries = 3) {
@@ -462,30 +416,81 @@ async function registerCommands(commands, retries = 3) {
     return false;
 }
 
-// Enhanced interaction handling with command tracking
+// Enhanced interaction handling
 client.on(Events.InteractionCreate, async interaction => {
     try {
-        if (!interaction.isChatInputCommand()) return;
+        // スラッシュコマンドの処理
+        if (interaction.isChatInputCommand()) {
+            const command = client.commands.get(interaction.commandName);
+            if (!command) return;
 
-        const command = client.commands.get(interaction.commandName);
-        if (!command) return;
+            await command.execute(interaction);
+            trackCommand(interaction.commandName, interaction.user);
+            return;
+        }
 
-        await command.execute(interaction);
-        
-        // コマンド使用状況を追跡
-        trackCommand(interaction.commandName, interaction.user);
-        
+        // ボタンインタラクションの処理
+        if (interaction.isButton()) {
+            // じゃんけんコマンドのボタン処理
+            if (interaction.customId.startsWith('janken-')) {
+                const jankenCommand = client.commands.get('janken');
+                if (!jankenCommand) {
+                    await interaction.reply({
+                        content: 'じゃんけんコマンドが見つかりません。',
+                        ephemeral: true
+                    });
+                    return;
+                }
+
+                if (interaction.customId.startsWith('janken-again-')) {
+                    await jankenCommand.handlePlayAgain(interaction);
+                } else {
+                    await jankenCommand.handleJankenButton(interaction);
+                }
+                return;
+            }
+
+            const buttonHandler = client.buttonHandlers.get(interaction.customId);
+            if (buttonHandler) {
+                await buttonHandler(interaction);
+            }
+            return;
+        }
+
+        // メニューインタラクションの処理
+        if (interaction.isStringSelectMenu()) {
+            const menuHandler = client.menuHandlers.get(interaction.customId);
+            if (menuHandler) {
+                await menuHandler(interaction);
+            }
+            return;
+        }
+
+        // モーダルの送信処理
+        if (interaction.isModalSubmit()) {
+            const modalHandler = client.modalHandlers.get(interaction.customId);
+            if (modalHandler) {
+                await modalHandler(interaction);
+            }
+            return;
+        }
+
     } catch (error) {
-        console.error('Error executing command:', error);
+        console.error('Error handling interaction:', error);
+        
         const errorMessage = {
-            content: 'コマンドの実行中にエラーが発生しました。',
+            content: 'インタラクションの処理中にエラーが発生しました。',
             ephemeral: true
         };
 
-        if (interaction.replied || interaction.deferred) {
-            await interaction.followUp(errorMessage);
-        } else {
-            await interaction.reply(errorMessage);
+        try {
+            if (interaction.replied || interaction.deferred) {
+                await interaction.followUp(errorMessage);
+            } else {
+                await interaction.reply(errorMessage);
+            }
+        } catch (replyError) {
+            console.error('Error sending error message:', replyError);
         }
     }
 });
@@ -510,7 +515,40 @@ async function animateStartup() {
     console.log(chalk.cyan('═══════════════════════\n'));
 }
 
-// Enhanced error handling
+// Initialize interaction manager
+client.interactionManager = new InteractionManager(client);
+
+// Enhanced startup sequence
+(async () => {
+    try {
+        await animateStartup();
+
+        console.log(chalk.yellow('Loading commands...'));
+        const commands = await loadCommands();
+        
+        if (commands.length > 0) {
+            console.log(chalk.yellow('Registering commands...'));
+            await registerCommands(commands);
+        }
+
+        console.log(chalk.yellow('Loading events...'));
+        loadEvents();
+
+        console.log(chalk.yellow('Loading JSON files...'));
+        jsonCache = loadJsonFiles();
+
+        await client.login(process.env.DISCORD_TOKEN);
+        keepAlive();
+
+        console.log(chalk.green('✓ Bot is ready and running!'));
+
+    } catch (error) {
+        console.error(chalk.red('Error during startup:'), error);
+        process.exit(1);
+    }
+})();
+
+// Error handling
 process.on('unhandledRejection', (reason, promise) => {
     console.error(chalk.red('Unhandled Rejection at:'), promise, 'reason:', reason);
 });
@@ -528,57 +566,16 @@ client.on('reconnecting', () => {
     console.log(chalk.yellow('Bot reconnecting...'));
 });
 
-// Enhanced startup sequence
-(async () => {
-    try {
-        await animateStartup();
-
-        // コマンドの読み込みと登録
-        console.log(chalk.yellow('Loading commands...'));
-        const commands = await loadCommands();
-        
-        if (commands.length > 0) {
-            console.log(chalk.yellow('Registering commands...'));
-            await registerCommands(commands);
-        }
-
-        // イベントの読み込み
-        console.log(chalk.yellow('Loading events...'));
-        loadEvents();
-
-        // JSONファイルの読み込み
-        console.log(chalk.yellow('Loading JSON files...'));
-        jsonCache = loadJsonFiles();
-
-        // Botの起動
-        await client.login(process.env.DISCORD_TOKEN);
-        
-        // サーバーの起動
-        keepAlive();
-
-    } catch (error) {
-        console.error(chalk.red('Error during startup:'), error);
-        process.exit(1);
-    }
-})();
-
 // Enhanced graceful shutdown
 async function gracefulShutdown() {
     console.log(chalk.yellow('\nGracefully shutting down...'));
     try {
-        // コマンド使用状況の保存
         const statsPath = path.join(DATA_DIR, 'commandStats.json');
         fs.writeFileSync(statsPath, JSON.stringify({
             usage: Array.from(commandStats.usage.entries()),
             recent: commandStats.recent
         }, null, 2));
 
-        // jsonWatcherの停止
-        if (jsonWatcher) {
-            jsonWatcher.close();
-        }
-
-        // クライアントの停止
         if (client) {
             await client.destroy();
         }
@@ -594,5 +591,4 @@ async function gracefulShutdown() {
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
 
-// Export for testing
 module.exports = { app, client };
