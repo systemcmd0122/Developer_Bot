@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Discord Bot Status</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center">
+    <div class="max-w-md w-full mx-auto p-6">
+        <div class="bg-gray-800 rounded-xl shadow-lg p-6 text-center">
+            <h1 class="text-2xl font-bold mb-6">Discord Bot Status</h1>
+            
+            <div id="status-indicator" class="flex items-center justify-center space-x-3 mb-4">
+                <div class="relative flex h-6 w-6">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-6 w-6 bg-green-500"></span>
+                </div>
+                <span class="text-xl font-medium text-green-400">オンライン</span>
+            </div>
+
+            <div class="text-gray-400 text-sm">
+                最終更新: <span id="last-update">checking...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function checkStatus() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                
+                const statusIndicator = document.getElementById('status-indicator');
+                const lastUpdate = document.getElementById('last-update');
+                const now = new Date().toLocaleString('ja-JP');
+                
+                if (data.status === 'ok' && data.botStatus === 0) {
+                    statusIndicator.innerHTML = `
+                        <div class="relative flex h-6 w-6">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-6 w-6 bg-green-500"></span>
+                        </div>
+                        <span class="text-xl font-medium text-green-400">オンライン</span>
+                    `;
+                } else {
+                    statusIndicator.innerHTML = `
+                        <div class="relative flex h-6 w-6">
+                            <span class="relative inline-flex rounded-full h-6 w-6 bg-red-500"></span>
+                        </div>
+                        <span class="text-xl font-medium text-red-400">オフライン</span>
+                    `;
+                }
+                
+                lastUpdate.textContent = now;
+            } catch (error) {
+                const statusIndicator = document.getElementById('status-indicator');
+                statusIndicator.innerHTML = `
+                    <div class="relative flex h-6 w-6">
+                        <span class="relative inline-flex rounded-full h-6 w-6 bg-red-500"></span>
+                    </div>
+                    <span class="text-xl font-medium text-red-400">オフライン</span>
+                `;
+                
+                document.getElementById('last-update').textContent = new Date().toLocaleString('ja-JP');
+            }
+        }
+
+        // 初回チェック
+        checkStatus();
+        
+        // 30秒ごとに更新
+        setInterval(checkStatus, 30000);
+    </script>
+</body>
+</html>

@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const fs = require('fs').promises;
 const path = require('path');
 const supabase = require('../utils/supabase');
+const InteractionManager = require('../events/interactions');
 
 // 保存ディレクトリのパスを設定
 const SAVE_DIR = path.join(process.cwd(), 'data', 'roleboards');
@@ -173,6 +174,17 @@ module.exports = {
                     roles: {},
                     description: description
                 };
+
+                // インタラクションを保存
+                const interactionManager = new InteractionManager(interaction.client);
+                await interactionManager.saveBoardInteraction(message.id, {
+                    type: 'role-board',
+                    guildId: interaction.guildId,
+                    channelId: interaction.channel.id,
+                    boardName: name,
+                    roles: {},
+                    timestamp: Date.now()
+                });
 
                 // Supabaseにボードを保存
                 const { data: boardData, error: boardError } = await supabase
@@ -676,6 +688,7 @@ module.exports = {
         try {
             const channel = await interaction.guild.channels.fetch(board.channelId);
             const message = await channel.messages.fetch(board.messageId);
+            const interactionManager = new InteractionManager(interaction.client);
 
             const embed = EmbedBuilder.from(message.embeds[0]);
             
@@ -692,19 +705,29 @@ module.exports = {
             if (roleEntries.length > 0) {
                 for (let i = 0; i < roleEntries.length; i += 5) {
                     const row = new ActionRowBuilder();
+                    const chunk = roleEntries.slice(i, i + 5);
                     
-                    const groupRoles = roleEntries.slice(i, i + 5);
-                    for (const [roleId, roleData] of groupRoles) {
-                        const button = new ButtonBuilder()
-                            .setCustomId(`role-${roleId}`)
-                            .setLabel(roleData.name)
-                            .setStyle(ButtonStyle.Primary);
-                        
-                        row.addComponents(button);
+                    for (const [roleId, roleData] of chunk) {
+                        row.addComponents(
+                            new ButtonBuilder()
+                                .setCustomId(`role-${roleId}`)
+                                .setLabel(roleData.name)
+                                .setStyle(ButtonStyle.Primary)
+                        );
                     }
                     
                     components.push(row);
                 }
+
+                // インタラクションデータを保存
+                await interactionManager.saveBoardInteraction(message.id, {
+                    type: 'role-board',
+                    guildId: interaction.guildId,
+                    channelId: board.channelId,
+                    boardName: boardName,
+                    roles: board.roles,
+                    timestamp: Date.now()
+                });
             }
 
             await message.edit({
@@ -726,8 +749,18 @@ module.exports = {
 
         const roleId = interaction.customId.replace('role-', '');
         const member = interaction.member;
+        const interactionManager = new InteractionManager(interaction.client);
         
         try {
+            // ボード情報を取得
+            const boardData = await interactionManager.getBoardInteraction(interaction.message.id);
+            if (!boardData || boardData.type !== 'role-board') {
+                return await interaction.reply({
+                    content: 'このロールボードのデータが見つかりません。',
+                    ephemeral: true
+                });
+            }
+
             const role = await interaction.guild.roles.fetch(roleId);
             if (!role) {
                 return await interaction.reply({

@@ -45,8 +45,13 @@ function loadJsonFiles() {
 
 // Express app setup with HTTPS
 const app = express();
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
+
+// ルートパスのリダイレクト
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'status.html'));
+});
 
 // Add security headers
 app.use((req, res, next) => {
