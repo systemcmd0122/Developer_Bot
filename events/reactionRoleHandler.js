@@ -1,61 +1,136 @@
 const supabase = require('../utils/supabase');
 
+// キャッシュを保持するオブジェクト
+const roleboardCache = new Map();
+const roleDataCache = new Map();
+
+// キャッシュの有効期限（1時間）
+const CACHE_TTL = 60 * 60 * 1000;
+
+// キャッシュからロールボードを取得または更新
+async function getRoleboardFromCache(messageId) {
+    const now = Date.now();
+    const cached = roleboardCache.get(messageId);
+    
+    if (cached && (now - cached.timestamp) < CACHE_TTL) {
+        return cached.data;
+    }
+
+    const { data: board, error } = await supabase
+        .from('roleboards')
+        .select('*')
+        .eq('message_id', messageId)
+        .eq('active', true)
+        .single();
+
+    if (!error && board) {
+        roleboardCache.set(messageId, {
+            data: board,
+            timestamp: now
+        });
+    }
+
+    return board;
+}
+
+// キャッシュからロール情報を取得または更新
+async function getRoleDataFromCache(boardId, emojiId) {
+    const cacheKey = `${boardId}:${emojiId}`;
+    const now = Date.now();
+    const cached = roleDataCache.get(cacheKey);
+    
+    if (cached && (now - cached.timestamp) < CACHE_TTL) {
+        return cached.data;
+    }
+
+    const { data: roleData, error } = await supabase
+        .from('roleboard_roles')
+        .select('*')
+        .eq('board_id', boardId)
+        .eq('emoji_id', emojiId)
+        .maybeSingle();
+
+    if (!error) {
+        roleDataCache.set(cacheKey, {
+            data: roleData,
+            timestamp: now
+        });
+    }
+
+    return roleData;
+}
+
+// ロールの付与/削除を非同期で記録
+async function recordRoleAssignment(data) {
+    try {
+        await supabase.from('role_assignments').insert(data);
+    } catch (error) {
+        console.error('履歴の記録中にエラーが発生しました:', error);
+    }
+}
+
+// 使用統計の更新を非同期で実行
+async function updateRoleStats(roleId, uses) {
+    try {
+        await supabase
+            .from('roleboard_roles')
+            .update({ 
+                uses: uses,
+                last_used_at: new Date().toISOString()
+            })
+            .eq('id', roleId);
+    } catch (error) {
+        console.error('統計の更新中にエラーが発生しました:', error);
+    }
+}
+
 async function handleReactionAdd(reaction, user) {
     if (user.bot) return;
 
     try {
-        // 部分的なリアクションの場合は完全なデータを取得
-        if (reaction.partial) {
-            try {
-                await reaction.fetch();
-            } catch (error) {
-                console.error('リアクションのフェッチ中にエラーが発生しました:', error);
-                return;
-            }
-        }
+        // パーシャルデータの同時取得
+        const [fetchedReaction, fetchedMessage] = await Promise.all([
+            reaction.partial ? reaction.fetch() : reaction,
+            reaction.message.partial ? reaction.message.fetch() : reaction.message
+        ]).catch(error => {
+            console.error('データのフェッチ中にエラーが発生しました:', error);
+            return [];
+        });
 
-        // 部分的なメッセージの場合は完全なデータを取得
-        if (reaction.message.partial) {
-            try {
-                await reaction.message.fetch();
-            } catch (error) {
-                console.error('メッセージのフェッチ中にエラーが発生しました:', error);
-                return;
-            }
-        }
+        if (!fetchedReaction || !fetchedMessage) return;
 
-        // ロールボードを検索
-        const { data: board, error: boardError } = await supabase
-            .from('roleboards')
-            .select('*')
-            .eq('message_id', reaction.message.id)
-            .eq('active', true)
-            .single();
-
-        if (boardError) {
-            console.error('ロールボードの検索中にエラーが発生しました:', boardError);
-            return;
-        }
-
+        // キャッシュからロールボードを取得
+        const board = await getRoleboardFromCache(reaction.message.id);
         if (!board) {
             return; // ロールボードではないメッセージへのリアクション
         }
 
-        // ロール情報を取得
-        const { data: roleData, error: roleError } = await supabase
-            .from('roleboard_roles')
-            .select('*')
-            .eq('board_id', board.id)
-            .eq('emoji', reaction.emoji.name)
-            .single();
-
-        if (roleError) {
-            console.error('ロール情報の検索中にエラーが発生しました:', roleError);
-            return;
-        }
-
+        // 絵文字のIDまたは名前を取得
+        const emojiIdentifier = reaction.emoji.id || reaction.emoji.name;
+        
+        // キャッシュからロール情報を取得
+        const roleData = await getRoleDataFromCache(board.id, emojiIdentifier);
         if (!roleData) {
-            return; // 登録されていない絵文字へのリアクション
+            // キャッシュにない場合は直接検索
+            const { data: newRoleData, error: roleError } = await supabase
+                .from('roleboard_roles')
+                .select('*')
+                .eq('board_id', board.id)
+                .or(`emoji_id.eq.${emojiIdentifier},emoji.eq.${reaction.emoji.name}`)
+                .single();
+
+            if (roleError || !newRoleData) {
+                return; // 登録されていない絵文字へのリアクション
+            }
+            
+            // キャッシュに保存
+            roleDataCache.set(`${board.id}:${emojiIdentifier}`, {
+                data: newRoleData,
+                timestamp: Date.now()
+            });
+            
+            // 以降の処理のために代入
+            Object.assign(roleData, newRoleData);
         }
 
         // リアクションを削除
