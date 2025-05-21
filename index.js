@@ -500,6 +500,39 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
+// リアクションハンドラー
+client.on('messageReactionAdd', async (reaction, user) => {
+    try {
+        // パーシャルリアクションの場合はフェッチ
+        if (reaction.partial) {
+            await reaction.fetch();
+        }
+        
+        const roleboardCommand = client.commands.get('roleboard');
+        if (roleboardCommand) {
+            await roleboardCommand.handleReactionAdd(reaction, user, client);
+        }
+    } catch (error) {
+        console.error('Reaction add error:', error);
+    }
+});
+
+client.on('messageReactionRemove', async (reaction, user) => {
+    try {
+        // パーシャルリアクションの場合はフェッチ
+        if (reaction.partial) {
+            await reaction.fetch();
+        }
+        
+        const roleboardCommand = client.commands.get('roleboard');
+        if (roleboardCommand) {
+            await roleboardCommand.handleReactionRemove(reaction, user, client);
+        }
+    } catch (error) {
+        console.error('Reaction remove error:', error);
+    }
+});
+
 // Enhanced startup animation
 async function animateStartup() {
     console.clear();
