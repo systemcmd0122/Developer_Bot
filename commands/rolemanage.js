@@ -539,6 +539,9 @@ module.exports = {
                 const boardName = interaction.options.getString('name');
 
                 try {
+                    // インタラクションを遅延応答に設定
+                    await interaction.deferReply({ ephemeral: true });
+
                     // Supabaseからボード情報を取得
                     const { data: boardData, error: boardError } = await supabase
                         .from('role_boards')
@@ -548,7 +551,7 @@ module.exports = {
                         .single();
 
                     if (boardError || !boardData) {
-                        return interaction.reply({
+                        return interaction.editReply({
                             content: 'ロールボードが見つかりませんでした。',
                             ephemeral: true
                         });
@@ -602,21 +605,35 @@ module.exports = {
                         console.error('ロールボード更新エラー:', updateError);
                     }
 
-                    // ボードを更新
+                    // インタラクションマネージャーを初期化
+                    const interactionManager = new InteractionManager(interaction.client);
+
+                    // ボードのインタラクションデータを保存
+                    await interactionManager.saveBoardInteraction(message.id, {
+                        type: 'role-board',
+                        guildId: interaction.guildId,
+                        channelId: interaction.channel.id,
+                        boardName: boardName,
+                        roles: serverRoleBoards[interaction.guildId][boardName].roles,
+                        timestamp: Date.now()
+                    });
+
+                    // ボードを更新（ボタンを含む）
                     await this.updateRoleBoard(interaction, boardName);
 
-                    return interaction.reply({
+                    await interaction.editReply({
                         content: `ロールボード「${boardName}」を再生成しました。`,
                         ephemeral: true
                     });
 
                 } catch (error) {
                     console.error('ロールボード再生成エラー:', error);
-                    return interaction.reply({
+                    return interaction.editReply({
                         content: 'ロールボードの再生成中にエラーが発生しました。',
                         ephemeral: true
                     });
                 }
+                break;
             }
         }
     },
