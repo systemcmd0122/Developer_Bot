@@ -11,10 +11,6 @@ module.exports = {
 
         // 武器データ
         const weapons = [
-            { name: 'クラシック', type: 'サイドアーム', price: '無料' },
-            { name: 'ショーティー', type: 'サイドアーム', price: '300' },
-            { name: 'フレンジー', type: 'サイドアーム', price: '450' },
-            { name: 'ゴースト', type: 'サイドアーム', price: '500' },
             { name: 'シェリフ', type: 'サイドアーム', price: '800' },
             { name: 'スティンガー', type: 'サブマシンガン', price: '1,100' },
             { name: 'スペクター', type: 'サブマシンガン', price: '1,600' },

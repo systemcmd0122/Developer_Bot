@@ -111,6 +111,17 @@ module.exports = {
                         .setDescription('読み込むファイル名（.txtは自動で追加）')
                         .setRequired(true)
                 )
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('regenerate')
+                .setDescription('ロールボードを再生成')
+                .addStringOption(option =>
+                    option
+                        .setName('name')
+                        .setDescription('再生成するロールボードの名前')
+                        .setRequired(true)
+                )
         ),
 
     async execute(interaction) {
@@ -504,42 +515,96 @@ module.exports = {
                     console.error('メッセージ削除中にエラーが発生:', error);
                 }
 
-                // Supabaseからボードを削除
-                const { data: boardData, error: boardError } = await supabase
-                    .from('role_boards')
-                    .select('id')
-                    .eq('guild_id', interaction.guildId)
-                    .eq('board_name', name)
-                    .single();
-
-                if (!boardError && boardData) {
-                    // 関連するロールを削除（CASCADE設定があるため不要だが、念のため）
-                    const { error: roleError } = await supabase
-                        .from('role_board_roles')
-                        .delete()
-                        .eq('board_id', boardData.id);
-
-                    if (roleError) {
-                        console.error('ロール削除エラー:', roleError);
-                    }
-
-                    // ボードを削除
-                    const { error: deleteBoardError } = await supabase
-                        .from('role_boards')
-                        .delete()
-                        .eq('id', boardData.id);
-
-                    if (deleteBoardError) {
-                        console.error('ボード削除エラー:', deleteBoardError);
-                    }
-                }
-
                 delete serverRoleBoards[interaction.guildId][name];
 
                 return interaction.reply({
                     content: `ロールボード「${name}」を削除しました。`,
                     ephemeral: true
                 });
+            }
+
+            case 'regenerate': {
+                const boardName = interaction.options.getString('name');
+
+                try {
+                    // Supabaseからボード情報を取得
+                    const { data: boardData, error: boardError } = await supabase
+                        .from('role_boards')
+                        .select('*')
+                        .eq('guild_id', interaction.guildId)
+                        .eq('board_name', boardName)
+                        .single();
+
+                    if (boardError || !boardData) {
+                        return interaction.reply({
+                            content: 'ロールボードが見つかりませんでした。',
+                            ephemeral: true
+                        });
+                    }
+
+                    // 新しいメッセージを作成
+                    const embed = new EmbedBuilder()
+                        .setTitle(`🎭 ${boardName}`)
+                        .setDescription(boardData.description || 'ロールを選択してください')
+                        .setColor('#ff00ff')
+                        .setTimestamp();
+
+                    const message = await interaction.channel.send({
+                        embeds: [embed],
+                        components: []
+                    });
+
+                    // メモリ内のボードデータを更新
+                    serverRoleBoards[interaction.guildId][boardName] = {
+                        messageId: message.id,
+                        channelId: interaction.channel.id,
+                        description: boardData.description || '',
+                        roles: {}
+                    };
+
+                    // ロール情報を取得
+                    const { data: rolesData, error: rolesError } = await supabase
+                        .from('role_board_roles')
+                        .select('*')
+                        .eq('board_id', boardData.id);
+
+                    if (!rolesError && rolesData) {
+                        for (const role of rolesData) {
+                            serverRoleBoards[interaction.guildId][boardName].roles[role.role_id] = {
+                                name: role.role_name,
+                                description: role.description
+                            };
+                        }
+                    }
+
+                    // Supabaseのメッセージ情報を更新
+                    const { error: updateError } = await supabase
+                        .from('role_boards')
+                        .update({
+                            message_id: message.id,
+                            channel_id: interaction.channel.id
+                        })
+                        .eq('id', boardData.id);
+
+                    if (updateError) {
+                        console.error('ロールボード更新エラー:', updateError);
+                    }
+
+                    // ボードを更新
+                    await this.updateRoleBoard(interaction, boardName);
+
+                    return interaction.reply({
+                        content: `ロールボード「${boardName}」を再生成しました。`,
+                        ephemeral: true
+                    });
+
+                } catch (error) {
+                    console.error('ロールボード再生成エラー:', error);
+                    return interaction.reply({
+                        content: 'ロールボードの再生成中にエラーが発生しました。',
+                        ephemeral: true
+                    });
+                }
             }
         }
     },
