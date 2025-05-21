@@ -546,13 +546,11 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
 
         if (boardError) {
             console.error('[Error] ロールボードの検索エラー:', boardError);
-            await reaction.users.remove(user.id).catch(console.error);
             return;
         }
 
         if (!board) {
-            await reaction.users.remove(user.id).catch(console.error);
-            return;
+            return; // ロールボードでないメッセージなので無視
         }
 
         // ロール情報を取得
@@ -565,12 +563,12 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
 
         if (roleError) {
             console.error('[Error] ロール情報の検索エラー:', roleError);
-            await reaction.users.remove(user.id).catch(console.error);
             return;
         }
 
         if (!roleData) {
             console.log('[Info] 該当するロールが見つかりません:', reaction.emoji.name);
+            // 不要なリアクションを削除
             await reaction.users.remove(user.id).catch(console.error);
             return;
         }
@@ -579,7 +577,6 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
         const guild = reaction.message.guild;
         if (!guild) {
             console.error('[Error] ギルドが見つかりません');
-            await reaction.users.remove(user.id).catch(console.error);
             return;
         }
 
@@ -588,7 +585,6 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
             member = await guild.members.fetch(user.id);
         } catch (error) {
             console.error('[Error] メンバーのフェッチに失敗:', error);
-            await reaction.users.remove(user.id).catch(console.error);
             return;
         }
 
@@ -597,12 +593,12 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
             role = await guild.roles.fetch(roleData.role_id);
         } catch (error) {
             console.error('[Error] ロールのフェッチに失敗:', error);
-            await reaction.users.remove(user.id).catch(console.error);
             return;
         }
 
         if (!role) {
             console.error('[Error] ロールが存在しません:', roleData.role_id);
+            // 不要なリアクションを削除
             await reaction.users.remove(user.id).catch(console.error);
             return;
         }
@@ -611,248 +607,369 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
         const botMember = await guild.members.fetch(client.user.id);
         if (!botMember.permissions.has('ManageRoles')) {
             console.error('[Error] Botにロールを管理する権限がありません');
-            await reaction.users.remove(user.id).catch(console.error);
+            await user.send('申し訳ありません。Botにロールを管理する権限がないため、ロールを付与できません。').catch(console.error);
             return;
         }
 
         // ロールの位置チェック
         if (role.position >= botMember.roles.highest.position) {
             console.error('[Error] Botより上位のロールは操作できません');
-            await reaction.users.remove(user.id).catch(console.error);
+            await user.send('申し訳ありません。このロールはBotより上位にあるため、操作できません。').catch(console.error);
             return;
         }
 
+        // 既にロールを持っているか確認
+        if (member.roles.cache.has(role.id)) {
+            await user.send(`既にロール「${role.name}」を持っています。`).catch(console.error);
+            return;
+        }
+
+        // ロールを付与
         try {
-            // ロールの切り替え処理
-            if (member.roles.cache.has(role.id)) {
-                // ロールを持っている場合は削除
-                await member.roles.remove(role, `ロールボード: ${board.name}`);
-                console.log(`[Success] ロールを削除: ${role.name} from ${member.user.tag}`);
+            await member.roles.add(role, `ロールボード: ${board.name}`);
+            console.log(`[Success] ロールを付与: ${role.name} to ${member.user.tag}`);
 
-                // ロール割り当て履歴を記録
-                await supabase
-                    .from('role_assignments')
-                    .insert({
-                        board_id: board.id,
-                        role_id: role.id,
-                        user_id: user.id,
-                        guild_id: guild.id,
-                        action_type: 'remove',
-                        timestamp: new Date().toISOString()
-                    })
-                    .catch(error => console.error('[Error] ロール割り当て履歴の記録に失敗:', error));
+            // 使用統計を更新
+            const { error: updateError } = await supabase
+                .from('roleboard_roles')
+                .update({
+                    uses: (roleData.uses || 0) + 1,
+                    last_used_at: new Date().toISOString()
+                })
+                .eq('id', roleData.id);
 
-            } else {
-                // ロールを持っていない場合は付与
-                await member.roles.add(role, `ロールボード: ${board.name}`);
-                console.log(`[Success] ロールを付与: ${role.name} to ${member.user.tag}`);
-
-                // 使用統計を更新
-                await supabase
-                    .from('roleboard_roles')
-                    .update({
-                        uses: (roleData.uses || 0) + 1,
-                        last_used_at: new Date().toISOString()
-                    })
-                    .eq('id', roleData.id)
-                    .catch(error => console.error('[Error] 使用統計の更新に失敗:', error));
-
-                // ロール割り当て履歴を記録
-                await supabase
-                    .from('role_assignments')
-                    .insert({
-                        board_id: board.id,
-                        role_id: role.id,
-                        user_id: user.id,
-                        guild_id: guild.id,
-                        action_type: 'add',
-                        timestamp: new Date().toISOString()
-                    })
-                    .catch(error => console.error('[Error] ロール割り当て履歴の記録に失敗:', error));
+            if (updateError) {
+                console.error('[Error] 使用統計の更新に失敗:', updateError);
             }
 
-            // リアクションを解除して1の状態を保つ
-            await reaction.users.remove(user.id).catch(console.error);
+            // ロール割り当て履歴を記録
+            const { error: assignmentError } = await supabase
+                .from('role_assignments')
+                .insert({
+                    board_id: board.id,
+                    role_id: role.id,
+                    user_id: user.id,
+                    guild_id: guild.id,
+                    action_type: 'add',
+                    timestamp: new Date().toISOString()
+                });
 
-            // ロールボードのリアクション数を1に保つ
-            const reactionUsers = await reaction.users.fetch();
-            for (const [id, reactionUser] of reactionUsers) {
-                if (id !== client.user.id) {
-                    await reaction.users.remove(id).catch(console.error);
+            if (assignmentError) {
+                console.error('[Error] ロール割り当て履歴の記録に失敗:', assignmentError);
+            }
+
+            // ユーザーにDMで通知
+            const successEmbed = {
+                color: 0x00FF00,
+                title: 'ロール付与完了',
+                description: `ロール「${role.name}」が正常に付与されました。`,
+                fields: [
+                    {
+                        name: 'サーバー',
+                        value: guild.name,
+                        inline: true
+                    },
+                    {
+                        name: 'ロールボード',
+                        value: board.name,
+                        inline: true
+                    }
+                ],
+                timestamp: new Date(),
+                footer: {
+                    text: 'リアクションを外すとロールを削除できます'
                 }
-            }
+            };
+
+            await user.send({ embeds: [successEmbed] }).catch(error => {
+                console.log('[Warning] DMの送信に失敗:', error);
+            });
 
         } catch (error) {
-            console.error('[Error] ロールの操作に失敗:', error);
+            console.error('[Error] ロールの付与に失敗:', error);
+            await user.send({
+                embeds: [{
+                    color: 0xFF0000,
+                    title: 'エラー',
+                    description: 'ロールの付与中にエラーが発生しました。\nサーバー管理者に連絡してください。',
+                    timestamp: new Date()
+                }]
+            }).catch(console.error);
+
+            // 不要なリアクションを削除
             await reaction.users.remove(user.id).catch(console.error);
         }
     } catch (error) {
         console.error('[Error] リアクション処理中のエラー:', error);
-        await reaction.users.remove(user.id).catch(console.error);
     }
 });
 
-// MessageReactionRemoveイベントは不要になったため削除
-// client.on(Events.MessageReactionRemove, async (reaction, user) => {
-//     // Botのリアクションは無視
-//     if (user.bot) return;
+client.on(Events.MessageReactionRemove, async (reaction, user) => {
+    // Botのリアクションは無視
+    if (user.bot) return;
 
-//     try {
-//         // 部分的なリアクションの場合は完全なデータを取得
-//         if (reaction.partial) {
-//             try {
-//                 await reaction.fetch();
-//             } catch (error) {
-//                 console.error('[Error] リアクションのフェッチに失敗:', error);
-//                 return;
-//             }
-//         }
+    try {
+        // 部分的なリアクションの場合は完全なデータを取得
+        if (reaction.partial) {
+            try {
+                await reaction.fetch();
+            } catch (error) {
+                console.error('[Error] リアクションのフェッチに失敗:', error);
+                return;
+            }
+        }
 
-//         // 部分的なメッセージの場合は完全なデータを取得
-//         if (reaction.message.partial) {
-//             try {
-//                 await reaction.message.fetch();
-//             } catch (error) {
-//                 console.error('[Error] メッセージのフェッチに失敗:', error);
-//                 return;
-//             }
-//         }
+        // 部分的なメッセージの場合は完全なデータを取得
+        if (reaction.message.partial) {
+            try {
+                await reaction.message.fetch();
+            } catch (error) {
+                console.error('[Error] メッセージのフェッチに失敗:', error);
+                return;
+            }
+        }
 
-//         // ロールボードを検索
-//         const { data: board, error: boardError } = await supabase
-//             .from('roleboards')
-//             .select('*')
-//             .eq('message_id', reaction.message.id)
-//             .eq('active', true)
-//             .single();
+        // ロールボードを検索
+        const { data: board, error: boardError } = await supabase
+            .from('roleboards')
+            .select('*')
+            .eq('message_id', reaction.message.id)
+            .eq('active', true)
+            .single();
 
-//         if (boardError) {
-//             console.error('[Error] ロールボードの検索エラー:', boardError);
-//             return;
-//         }
+        if (boardError) {
+            console.error('[Error] ロールボードの検索エラー:', boardError);
+            return;
+        }
 
-//         if (!board) {
-//             return; // ロールボードでないメッセージなので無視
-//         }
+        if (!board) {
+            return; // ロールボードでないメッセージなので無視
+        }
 
-//         // ロール情報を取得
-//         const { data: roleData, error: roleError } = await supabase
-//             .from('roleboard_roles')
-//             .select('*')
-//             .eq('board_id', board.id)
-//             .eq('emoji', reaction.emoji.name)
-//             .single();
+        // ロール情報を取得
+        const { data: roleData, error: roleError } = await supabase
+            .from('roleboard_roles')
+            .select('*')
+            .eq('board_id', board.id)
+            .eq('emoji', reaction.emoji.name)
+            .single();
 
-//         if (roleError) {
-//             console.error('[Error] ロール情報の検索エラー:', roleError);
-//             return;
-//         }
+        if (roleError) {
+            console.error('[Error] ロール情報の検索エラー:', roleError);
+            return;
+        }
 
-//         if (!roleData) {
-//             console.log('[Info] 該当するロールが見つかりません:', reaction.emoji.name);
-//             return;
-//         }
+        if (!roleData) {
+            console.log('[Info] 該当するロールが見つかりません:', reaction.emoji.name);
+            return;
+        }
 
-//         // ギルドメンバーを取得
-//         const guild = reaction.message.guild;
-//         if (!guild) {
-//             console.error('[Error] ギルドが見つかりません');
-//             return;
-//         }
+        // ギルドメンバーを取得
+        const guild = reaction.message.guild;
+        if (!guild) {
+            console.error('[Error] ギルドが見つかりません');
+            return;
+        }
 
-//         let member;
-//         try {
-//             member = await guild.members.fetch(user.id);
-//         } catch (error) {
-//             console.error('[Error] メンバーのフェッチに失敗:', error);
-//             return;
-//         }
+        let member;
+        try {
+            member = await guild.members.fetch(user.id);
+        } catch (error) {
+            console.error('[Error] メンバーのフェッチに失敗:', error);
+            return;
+        }
 
-//         let role;
-//         try {
-//             role = await guild.roles.fetch(roleData.role_id);
-//         } catch (error) {
-//             console.error('[Error] ロールのフェッチに失敗:', error);
-//             return;
-//         }
+        let role;
+        try {
+            role = await guild.roles.fetch(roleData.role_id);
+        } catch (error) {
+            console.error('[Error] ロールのフェッチに失敗:', error);
+            return;
+        }
 
-//         if (!role) {
-//             console.error('[Error] ロールが存在しません:', roleData.role_id);
-//             return;
-//         }
+        if (!role) {
+            console.error('[Error] ロールが存在しません:', roleData.role_id);
+            return;
+        }
 
-//         // Botの権限チェック
-//         const botMember = await guild.members.fetch(client.user.id);
-//         if (!botMember.permissions.has('ManageRoles')) {
-//             console.error('[Error] Botにロールを管理する権限がありません');
-//             await user.send('申し訳ありません。Botにロールを管理する権限がないため、ロールを削除できません。').catch(console.error);
-//             return;
-//         }
+        // Botの権限チェック
+        const botMember = await guild.members.fetch(client.user.id);
+        if (!botMember.permissions.has('ManageRoles')) {
+            console.error('[Error] Botにロールを管理する権限がありません');
+            await user.send('申し訳ありません。Botにロールを管理する権限がないため、ロールを削除できません。').catch(console.error);
+            return;
+        }
 
-//         // ロールの位置チェック
-//         if (role.position >= botMember.roles.highest.position) {
-//             console.error('[Error] Botより上位のロールは操作できません');
-//             await user.send('申し訳ありません。このロールはBotより上位にあるため、操作できません。').catch(console.error);
-//             return;
-//         }
+        // ロールの位置チェック
+        if (role.position >= botMember.roles.highest.position) {
+            console.error('[Error] Botより上位のロールは操作できません');
+            await user.send('申し訳ありません。このロールはBotより上位にあるため、操作できません。').catch(console.error);
+            return;
+        }
 
-//         // ロールを持っているか確認
-//         if (!member.roles.cache.has(role.id)) {
-//             return; // ロールを持っていない場合は何もしない
-//         }
+        // ロールを持っているか確認
+        if (!member.roles.cache.has(role.id)) {
+            return; // ロールを持っていない場合は何もしない
+        }
 
-//         // ロールを削除
-//         try {
-//             await member.roles.remove(role, `ロールボード: ${board.name}`);
-//             console.log(`[Success] ロールを削除: ${role.name} from ${member.user.tag}`);
+        // ロールを削除
+        try {
+            await member.roles.remove(role, `ロールボード: ${board.name}`);
+            console.log(`[Success] ロールを削除: ${role.name} from ${member.user.tag}`);
 
-//             // ロール割り当て履歴を記録
-//             const { error: assignmentError } = await supabase
-//                 .from('role_assignments')
-//                 .insert({
-//                     board_id: board.id,
-//                     role_id: role.id,
-//                     user_id: user.id,
-//                     guild_id: guild.id,
-//                     action_type: 'remove',
-//                     timestamp: new Date().toISOString()
-//                 });
+            // ロール割り当て履歴を記録
+            const { error: assignmentError } = await supabase
+                .from('role_assignments')
+                .insert({
+                    board_id: board.id,
+                    role_id: role.id,
+                    user_id: user.id,
+                    guild_id: guild.id,
+                    action_type: 'remove',
+                    timestamp: new Date().toISOString()
+                });
 
-//             if (assignmentError) {
-//                 console.error('[Error] ロール割り当て履歴の記録に失敗:', assignmentError);
-//             }
+            if (assignmentError) {
+                console.error('[Error] ロール割り当て履歴の記録に失敗:', assignmentError);
+            }
 
-//             // ユーザーにDMで通知
-//             const successEmbed = {
-//                 color: 0xFF6B6B,
-//                 title: 'ロール削除完了',
-//                 description: `ロール「${role.name}」を削除しました。`,
-//                 fields: [
-//                     {
-//                         name: 'サーバー',
-//                         value: guild.name,
-//                         inline: true
-//                     },
-//                     {
-//                         name: 'ロールボード',
-//                         value: board.name,
-//                         inline: true
-//                     }
-//                 ],
-//                 timestamp: new Date(),
-//                 footer: {
-//                     text: '再度リアクションを付けることでロールを取得できます'
-//                 }
-//             };
+            // ユーザーにDMで通知
+            const successEmbed = {
+                color: 0xFF6B6B,
+                title: 'ロール削除完了',
+                description: `ロール「${role.name}」を削除しました。`,
+                fields: [
+                    {
+                        name: 'サーバー',
+                        value: guild.name,
+                        inline: true
+                    },
+                    {
+                        name: 'ロールボード',
+                        value: board.name,
+                        inline: true
+                    }
+                ],
+                timestamp: new Date(),
+                footer: {
+                    text: '再度リアクションを付けることでロールを取得できます'
+                }
+            };
 
-//             await user.send({ embeds: [successEmbed] }).catch(error => {
-//                 console.log('[Warning] DMの送信に失敗:', error);
-//             });
+            await user.send({ embeds: [successEmbed] }).catch(error => {
+                console.log('[Warning] DMの送信に失敗:', error);
+            });
 
-//         } catch (error) {
-//             console.error('[Error] ロールの削除に失敗:', error);
-//             await user.send({
-//                 embeds: [{
-//                     color: 0xFF0000,
-//                     title: 'エラー',
-//                     description: 'ロールの削除中にエラーが発生しました。\nサーバー管理者に連絡してください。',
+        } catch (error) {
+            console.error('[Error] ロールの削除に失敗:', error);
+            await user.send({
+                embeds: [{
+                    color: 0xFF0000,
+                    title: 'エラー',
+                    description: 'ロールの削除中にエラーが発生しました。\nサーバー管理者に連絡してください。',
+                    timestamp: new Date()
+                }]
+            }).catch(console.error);
+        }
+    } catch (error) {
+        console.error('[Error] リアクション削除処理中のエラー:', error);
+    }
+});
+
+// Enhanced startup animation
+async function animateStartup() {
+    console.clear();
+    
+    const logo = [
+        '▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄',
+        '█░░░░Discord Bot░░░░█',
+        '▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀'
+    ];
+
+    for (let i = 0; i < logo.length; i++) {
+        console.log(chalk.cyan(logo[i]));
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    console.log(chalk.cyan('\n═══════════════════════'));
+    console.log(chalk.yellow('  Starting Services...'));
+    console.log(chalk.cyan('═══════════════════════\n'));
+}
+
+// Initialize interaction manager
+client.interactionManager = new InteractionManager(client);
+
+// Enhanced startup sequence
+(async () => {
+    try {
+        await animateStartup();
+
+        console.log(chalk.yellow('Loading commands...'));
+        const commands = await loadCommands();
+        
+        if (commands.length > 0) {
+            console.log(chalk.yellow('Registering commands...'));
+            await registerCommands(commands);
+        }
+
+        console.log(chalk.yellow('Loading events...'));
+        loadEvents();
+
+        console.log(chalk.yellow('Loading JSON files...'));
+        jsonCache = loadJsonFiles();
+
+        await client.login(process.env.DISCORD_TOKEN);
+        keepAlive();
+
+        console.log(chalk.green('✓ Bot is ready and running!'));
+
+    } catch (error) {
+        console.error(chalk.red('Error during startup:'), error);
+        process.exit(1);
+    }
+})();
+
+// Error handling
+process.on('unhandledRejection', (reason, promise) => {
+    console.error(chalk.red('Unhandled Rejection at:'), promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+    console.error(chalk.red('Uncaught Exception:'), error);
+});
+
+// Reconnection handling
+client.on('disconnect', () => {
+    console.log(chalk.yellow('Bot disconnected. Attempting to reconnect...'));
+});
+
+client.on('reconnecting', () => {
+    console.log(chalk.yellow('Bot reconnecting...'));
+});
+
+// Enhanced graceful shutdown
+async function gracefulShutdown() {
+    console.log(chalk.yellow('\nGracefully shutting down...'));
+    try {
+        const statsPath = path.join(DATA_DIR, 'commandStats.json');
+        fs.writeFileSync(statsPath, JSON.stringify({
+            usage: Array.from(commandStats.usage.entries()),
+            recent: commandStats.recent
+        }, null, 2));
+
+        if (client) {
+            await client.destroy();
+        }
+
+        console.log(chalk.green('Shutdown completed successfully'));
+        process.exit(0);
+    } catch (error) {
+        console.error(chalk.red('Error during shutdown:'), error);
+        process.exit(1);
+    }
+}
+
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
+
+module.exports = { app, client };
