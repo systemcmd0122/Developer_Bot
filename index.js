@@ -502,34 +502,145 @@ client.on(Events.InteractionCreate, async interaction => {
 
 // リアクションハンドラー
 client.on('messageReactionAdd', async (reaction, user) => {
+    if (user.bot) return;
+
     try {
-        // パーシャルリアクションの場合はフェッチ
+        // 部分的なリアクションの場合は完全なデータを取得
         if (reaction.partial) {
             await reaction.fetch();
         }
-        
-        const roleboardCommand = client.commands.get('roleboard');
-        if (roleboardCommand) {
-            await roleboardCommand.handleReactionAdd(reaction, user, client);
+        // 部分的なメッセージの場合は完全なデータを取得
+        if (reaction.message.partial) {
+            await reaction.message.fetch();
+        }
+
+        // ロールボードを検索
+        const { data: board } = await supabase
+            .from('roleboards')
+            .select('*')
+            .eq('message_id', reaction.message.id)
+            .single();
+
+        if (!board) return;
+
+        // ロール情報を取得
+        const { data: roleData } = await supabase
+            .from('roleboard_roles')
+            .select('*')
+            .eq('board_id', board.id)
+            .eq('emoji', reaction.emoji.name)
+            .single();
+
+        if (!roleData) return;
+
+        // ギルドメンバーを取得
+        const guild = reaction.message.guild;
+        const member = await guild.members.fetch(user.id);
+        const role = await guild.roles.fetch(roleData.role_id);
+
+        if (!role) {
+            console.error(`Role ${roleData.role_id} not found`);
+            return;
+        }
+
+        // ロールを付与
+        await member.roles.add(role);
+
+        // 使用統計を更新
+        await supabase
+            .from('roleboard_roles')
+            .update({
+                uses: roleData.uses + 1,
+                last_used_at: new Date().toISOString()
+            })
+            .eq('id', roleData.id);
+
+        // ロール割り当て履歴を記録
+        await supabase
+            .from('role_assignments')
+            .insert({
+                board_id: board.id,
+                role_id: role.id,
+                user_id: user.id,
+                guild_id: guild.id,
+                action_type: 'add'
+            });
+
+        // ユーザーにDMで通知
+        try {
+            await user.send(`✅ 「${guild.name}」サーバーで「${role.name}」ロールを付与しました。`);
+        } catch (error) {
+            console.error('DM送信エラー:', error);
         }
     } catch (error) {
-        console.error('Reaction add error:', error);
+        console.error('リアクション追加エラー:', error);
     }
 });
 
 client.on('messageReactionRemove', async (reaction, user) => {
+    if (user.bot) return;
+
     try {
-        // パーシャルリアクションの場合はフェッチ
+        // 部分的なリアクションの場合は完全なデータを取得
         if (reaction.partial) {
             await reaction.fetch();
         }
-        
-        const roleboardCommand = client.commands.get('roleboard');
-        if (roleboardCommand) {
-            await roleboardCommand.handleReactionRemove(reaction, user, client);
+        // 部分的なメッセージの場合は完全なデータを取得
+        if (reaction.message.partial) {
+            await reaction.message.fetch();
+        }
+
+        // ロールボードを検索
+        const { data: board } = await supabase
+            .from('roleboards')
+            .select('*')
+            .eq('message_id', reaction.message.id)
+            .single();
+
+        if (!board) return;
+
+        // ロール情報を取得
+        const { data: roleData } = await supabase
+            .from('roleboard_roles')
+            .select('*')
+            .eq('board_id', board.id)
+            .eq('emoji', reaction.emoji.name)
+            .single();
+
+        if (!roleData) return;
+
+        // ギルドメンバーを取得
+        const guild = reaction.message.guild;
+        const member = await guild.members.fetch(user.id);
+        const role = await guild.roles.fetch(roleData.role_id);
+
+        if (!role) {
+            console.error(`Role ${roleData.role_id} not found`);
+            return;
+        }
+
+        // ロールを削除
+        await member.roles.remove(role);
+
+        // ロール割り当て履歴を記録
+        await supabase
+            .from('role_assignments')
+            .insert({
+                board_id: board.id,
+                role_id: role.id,
+                user_id: user.id,
+                guild_id: guild.id,
+                action_type: 'remove'
+            });
+
+        // ユーザーにDMで通知
+        try {
+            await user.send(`❌ 「${guild.name}」サーバーで「${role.name}」ロールを削除しました。`);
+        } catch (error) {
+            console.error('DM送信エラー:', error);
         }
     } catch (error) {
-        console.error('Reaction remove error:', error);
+        console.error('リアクション削除エラー:', error);
     }
 });
 
