@@ -117,7 +117,7 @@ async function handleCreate(interaction) {
         const message = await interaction.channel.send({ embeds: [embed] });
 
         // Supabaseにロールボードを登録
-        const { error } = await supabase
+        const { data: board, error } = await supabase
             .from('roleboards')
             .insert({
                 guild_id: interaction.guildId,
@@ -171,7 +171,7 @@ async function handleAddRole(interaction) {
         }
 
         // 絵文字の重複チェック
-        const { data: existingRole } = await supabase
+        const { data: existingRole, error: roleError } = await supabase
             .from('roleboard_roles')
             .select('*')
             .eq('board_id', board.id)
@@ -397,6 +397,7 @@ async function getRoleList(boardId, guild) {
     }
 
     return roles.map(role => {
+        const guildRole = guild.roles.cache.get(role.role_id);
         const description = role.description ? ` - ${role.description}` : '';
         return `${role.emoji} <@&${role.role_id}>${description}`;
     }).join('\n');
