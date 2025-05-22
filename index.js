@@ -21,17 +21,11 @@ if (!fs.existsSync(DATA_DIR)) {
 // Express server setup
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-XSS-Protection', '1; mode=block');
     next();
-});
-
-// ルートパスのハンドリング
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'status.html'));
 });
 
 // Health check endpoints
