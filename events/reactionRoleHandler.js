@@ -92,19 +92,19 @@ async function handleReactionAdd(reaction, user) {
         // Botの権限チェック
         const botMember = await guild.members.fetch(guild.client.user.id);
         if (!botMember.permissions.has('ManageRoles')) {
-            await reaction.message.channel.send({
-                content: `<@${user.id}> Botにロールを管理する権限がないため、操作できません。`,
+            await reaction.message.reply({
+                content: `Botにロールを管理する権限がないため、操作できません。`,
                 ephemeral: true
-            }).then(msg => setTimeout(() => msg.delete(), 5000));
+            });
             return;
         }
 
         // ロールの位置チェック
         if (role.position >= botMember.roles.highest.position) {
-            await reaction.message.channel.send({
-                content: `<@${user.id}> このロールはBotより上位にあるため、操作できません。`,
+            await reaction.message.reply({
+                content: `このロールはBotより上位にあるため、操作できません。`,
                 ephemeral: true
-            }).then(msg => setTimeout(() => msg.delete(), 5000));
+            });
             return;
         }
 
@@ -133,10 +133,10 @@ async function handleReactionAdd(reaction, user) {
                     .eq('id', roleData.id);
 
                 // 通知を送信
-                await reaction.message.channel.send({
-                    content: `<@${user.id}> ロール「${role.name}」を削除しました。`,
+                await reaction.message.reply({
+                    content: `ロール「${role.name}」を削除しました。`,
                     ephemeral: true
-                }).then(msg => setTimeout(() => msg.delete(), 5000));
+                });
 
             } else {
                 // ロールを付与
@@ -161,18 +161,18 @@ async function handleReactionAdd(reaction, user) {
                     .eq('id', roleData.id);
 
                 // 通知を送信
-                await reaction.message.channel.send({
-                    content: `<@${user.id}> ロール「${role.name}」を付与しました。`,
+                await reaction.message.reply({
+                    content: `ロール「${role.name}」を付与しました。`,
                     ephemeral: true
-                }).then(msg => setTimeout(() => msg.delete(), 5000));
+                });
             }
 
         } catch (error) {
             console.error('ロールの操作中にエラーが発生しました:', error);
-            await reaction.message.channel.send({
-                content: `<@${user.id}> ロールの操作中にエラーが発生しました。`,
+            await reaction.message.reply({
+                content: `ロールの操作中にエラーが発生しました。`,
                 ephemeral: true
-            }).then(msg => setTimeout(() => msg.delete(), 5000));
+            });
         }
 
     } catch (error) {
