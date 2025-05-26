@@ -42,49 +42,12 @@ module.exports = {
                 return;
         }
 
-        // メッセージが送信されたチャンネルのカテゴリーを取得
-        const category = message.channel.parent;
-        
-        if (!category) {
-            await message.reply({
-                content: 'このチャンネルはカテゴリーに属していません。'
-            });
-            return;
-        }
-
-        // カテゴリー内のボイスチャンネルを取得
-        const voiceChannels = category.children.cache.filter(channel => channel.type === 2);
-
-        if (voiceChannels.size === 0) {
-            await message.reply({
-                content: 'このカテゴリーにはボイスチャンネルがありません。'
-            });
-            return;
-        }
-
-        // すべてのボイスチャンネルからユーザーを収集
-        let voiceUsers = [];
-        voiceChannels.forEach(channel => {
-            channel.members.forEach(member => {
-                voiceUsers.push(member);
-            });
-        });
-
-        // VCにユーザーがいない場合
-        if (voiceUsers.length === 0) {
-            await message.reply({
-                content: 'カテゴリー内のVCにユーザーがいません。'
-            });
-            return;
-        }
-
-        // ランダムでユーザーとエージェントを選択
-        const selectedUser = voiceUsers[Math.floor(Math.random() * voiceUsers.length)];
+        // ランダムでエージェントを選択
         const selectedAgent = agentPool[Math.floor(Math.random() * agentPool.length)];
 
         const embed = new EmbedBuilder()
             .setTitle(`🎯 ランダム${roleTitle}選択`)
-            .setDescription(`${selectedUser} さんは **${selectedAgent}** で戦います！`)
+            .setDescription(`**${selectedAgent}** が選択されました！`)
             .setColor('#FFA500')
             .setTimestamp();
 
@@ -99,6 +62,6 @@ module.exports = {
             } catch (error) {
                 console.error('メッセージの削除に失敗しました:', error);
             }
-        }, 60000); // 60000ミリ秒 = 1分
+        }, 15000); // 15000ミリ秒 = 15秒
     },
 };
