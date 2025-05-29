@@ -79,8 +79,8 @@ module.exports = {
                 tauntText = fallbackTaunts[Math.floor(Math.random() * fallbackTaunts.length)];
             }
 
-            // メンション付きで通常メッセージとして返信
-            await message.reply(`<@${message.author.id}> ${tauntText}`);
+            // 煽りメッセージのみを送信（メンションなし）
+            await message.reply(tauntText);
 
             console.log(chalk.magenta(`✓ Taunt Generated: Responded to ${message.author.username} in #${message.channel.name}`));
 
@@ -98,7 +98,8 @@ module.exports = {
             
             const emergencyTaunt = emergencyTaunts[Math.floor(Math.random() * emergencyTaunts.length)];
             
-            await message.reply(`<@${message.author.id}> ${emergencyTaunt}`);
+            // エラー時も煽りメッセージのみを送信
+            await message.reply(emergencyTaunt);
         }
     },
 };
