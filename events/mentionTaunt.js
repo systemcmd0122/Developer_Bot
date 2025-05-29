@@ -1,4 +1,4 @@
-const { Events, EmbedBuilder } = require('discord.js');
+const { Events } = require('discord.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const chalk = require('chalk');
 
@@ -79,58 +79,10 @@ module.exports = {
                 tauntText = fallbackTaunts[Math.floor(Math.random() * fallbackTaunts.length)];
             }
 
-            // 煽り文章のタイプを判定してアイコンを選択
-            const tauntEmojis = ['😏', '😎', '🤭', '😈', '🙃', '😤', '🤖', '🎯', '🎮', '💭'];
-            const randomEmoji = tauntEmojis[Math.floor(Math.random() * tauntEmojis.length)];
+            // メンション付きで通常メッセージとして返信
+            await message.reply(`<@${message.author.id}> ${tauntText}`);
 
-            // 煽りの強度を判定（文字数や内容で）
-            let tauntLevel = 'ライト';
-            let tauntColor = '#FFA500'; // オレンジ
-
-            if (tauntText.length > 50 || tauntText.includes('？') || tauntText.includes('！')) {
-                if (Math.random() > 0.7) {
-                    tauntLevel = 'ミディアム';
-                    tauntColor = '#FF6B6B'; // 赤っぽい
-                }
-            }
-
-            if (tauntText.includes('ランク') || tauntText.includes('エイム') || tauntText.includes('デス')) {
-                if (Math.random() > 0.8) {
-                    tauntLevel = 'スパイシー';
-                    tauntColor = '#FF4757'; // より赤い
-                }
-            }
-
-            // Embed作成
-            const embed = new EmbedBuilder()
-                .setTitle(`${randomEmoji} Bot からの一言`)
-                .setDescription(tauntText)
-                .setColor(tauntColor)
-                .addFields(
-                    { 
-                        name: '🌶️ 煽りレベル', 
-                        value: tauntLevel, 
-                        inline: true 
-                    },
-                    { 
-                        name: '🎯 ターゲット', 
-                        value: message.author.username, 
-                        inline: true 
-                    }
-                )
-                .setFooter({ 
-                    text: 'Powered by Gemini AI • 軽いジョークです、本気にしないでね！',
-                    iconURL: message.client.user.displayAvatarURL({ dynamic: true })
-                })
-                .setTimestamp();
-
-            // メンション付きで返信
-            await message.reply({ 
-                content: `<@${message.author.id}>`,
-                embeds: [embed] 
-            });
-
-            console.log(chalk.magenta(`✓ Taunt Generated: Responded to ${message.author.username} with "${tauntLevel}" level taunt in #${message.channel.name}`));
+            console.log(chalk.magenta(`✓ Taunt Generated: Responded to ${message.author.username} in #${message.channel.name}`));
 
         } catch (error) {
             console.error(chalk.red('✗ Error generating taunt:'), error);
@@ -146,19 +98,7 @@ module.exports = {
             
             const emergencyTaunt = emergencyTaunts[Math.floor(Math.random() * emergencyTaunts.length)];
             
-            const errorEmbed = new EmbedBuilder()
-                .setTitle('🤖 Bot からの緊急メッセージ')
-                .setDescription(emergencyTaunt)
-                .setColor('#FF6B6B')
-                .setFooter({ 
-                    text: 'システムエラー中でも煽りは忘れません！'
-                })
-                .setTimestamp();
-
-            await message.reply({ 
-                content: `<@${message.author.id}>`,
-                embeds: [errorEmbed] 
-            });
+            await message.reply(`<@${message.author.id}> ${emergencyTaunt}`);
         }
     },
 };
