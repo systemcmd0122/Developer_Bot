@@ -270,6 +270,10 @@ client.on(Events.InteractionCreate, async interaction => {
 const { handleReactionAdd } = require('./events/reactionRoleHandler');
 client.on(Events.MessageReactionAdd, handleReactionAdd);
 
+// メッセージハンドラー（ランク表示）
+const { handleRankMessage } = require('./events/messageRankHandler');
+client.on(Events.MessageCreate, handleRankMessage);
+
 // インタラクションマネージャーの初期化
 client.interactionManager = new InteractionManager(client);
 
